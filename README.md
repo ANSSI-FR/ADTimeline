@@ -2,9 +2,10 @@
 
 The ADTimeline script generates a timeline based on Active Directory replication metadata for objects considered of interest.  
 Replication metadata gives you the time at which each replicated attribute for a given object was last changed. As a result the timeline of modifications is partial. For each modification of a replicated attribute a version number is incremented.  
-ADTimeline will be presented at the [CoRI&IN 2019](https://www.cecyf.fr/activites/recherche-et-developpement/coriin-2019/) (Conférence sur la réponse aux incidents et l’investigation numérique).  
-Objects considered of interest include:
+ADTimeline was presented at the [CoRI&IN 2019](https://www.cecyf.fr/activites/recherche-et-developpement/coriin-2019/) (Conférence sur la réponse aux incidents et l’investigation numérique). Slides of the presentation, in french language,  are available [here](https://www.ssi.gouv.fr/publication/investigation-numerique-sur-lannuaire-active-directory-avec-les-metadonnees-de-replication-outil-adtimeline/). 
+Objects considered of interest retrieved by the script include:
 
+- Schema and configuration partition root objects.
 - Domain root and objects located directly under the root.
 - Objects having an ACE on the domain root.
 - Domain roots located in the AD forest.
@@ -20,6 +21,7 @@ Objects considered of interest include:
 - Accounts with suspicious SIDHistory (scope is forest wide).
 - Sites.
 - Organizational Units.
+- Objects with Kerberos delegation enabled.
 - Extended rights.
 - Schema attributes with particular SearchFlags (Do not audit or confidential).
 - Kerberoastable user accounts (SPN value).
@@ -30,7 +32,8 @@ Objects considered of interest include:
 - Exchange mail flow configuration objects.
 - Deleted objects under the configuration partition.
 - Dynamic objects.
-- The Pre Windows 2000 compatible access group.
+- The directory service and RID manager objects.
+- The Pre Windows 2000 compatible access, Cert publishers, GPO creator owners and DNS Admins groups.
 - Custom groups which have to be manually defined.
 
 ## Prerequisites:
