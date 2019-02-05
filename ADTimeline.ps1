@@ -1,5 +1,6 @@
 # Active directory timeline generated with replication metadata
 # Leonard SAVINA - ANSSI\SDO\DR\INM - CERT-FR
+# Issues and PR welcome https://github.com/ANSSI-FR/ADTimeline
 
 # Use paramater server if running offline mode or GC is not found
 Param(
@@ -11,18 +12,25 @@ $groupscustom = $null
 # Example of custom groups
 # $groupscustom = ("VIP-group1","ESX-Admis","Tier1-admins")...
 
+
+# Set Variables for error handling 
+Set-Variable -name ERR_BAD_OS_VERSION -option Constant -value 1
+Set-Variable -name ERR_NO_AD_MODULE   -option Constant -value 2
+Set-Variable -name ERR_NO_GC_FOUND   -option Constant -value 3
+Set-Variable -name ERR_GC_BIND_FAILED   -option Constant -value 4
+
 # AD Timeline is supported on Windows 6.1 +
 if([Environment]::OSVersion.version -lt (new-object 'Version' 6,1))
 	{
 	write-output -inputobject "---- Script must be launched on a Windows 6.1 + computer ----"
-	Exit 0
+	Exit $ERR_BAD_OS_VERSION
 	}
 
 # Check AD Psh module
 If(-not(Get-Module -name activedirectory -listavailable))
 	{
 	write-output -inputobject "---- Script must be launched on a computer with Active Directory PowerShell module installed ----"
-	Exit 0
+	Exit $ERR_NO_AD_MODULE
 	}
 Else
 	{import-module activedirectory}
@@ -40,7 +48,7 @@ if(-not($server))
 	Else
 		{
 		write-output -inputobject "---- No Global Catalog found in current AD site, please run the script and specify a Global Catalog name with the server argument ----"
-		Exit 0
+		Exit $ERR_NO_GC_FOUND
 		}
 	}
 
@@ -52,7 +60,7 @@ $root = Get-ADRootDSE -server $server
 if($error)
 	{
 	write-output -inputobject "---- Connexion au DC $($server) impossible ----"
-	Exit 0
+	Exit $ERR_GC_BIND_FAILED
 	}
 
 # Check if script is running offline or online and set GC port
@@ -73,7 +81,7 @@ else {
 		Else
 		{
 		write-output -inputobject "---- DC is not Global Catalog, please provide a GC with the server argument ----"
-		Exit 0
+		Exit $ERR_NO_GC_FOUND
 		}
 	}
 
@@ -1286,8 +1294,8 @@ if($ISets -eq $true)
 				else
 				{"$(Get-TimeStamp) ETS members processed, getting nested groups till level 2 " | out-file log-adexport.log -append}
 			}
-		# Fetching transport rules, accepted domains and SMTP connectors
-		$SMTP = Get-ADObject -searchbase $root.configurationNamingContext -filter {(ObjectClass -eq "msExchTransportRule") -or (ObjectClass -eq "msExchAcceptedDomain")  -or (ObjectClass -eq "msExchRoutingSMTPConnector")  -or (ObjectClass -eq "msExchSmtpReceiveConnector")} -server $server -Properties *
+		# Fetching transport rules, accepted domains, SMTP connectors and Mailbox databases
+		$SMTP = Get-ADObject -searchbase $root.configurationNamingContext -filter {(ObjectClass -eq "msExchTransportRule") -or (ObjectClass -eq "msExchAcceptedDomain")  -or (ObjectClass -eq "msExchRoutingSMTPConnector")  -or (ObjectClass -eq "msExchSmtpReceiveConnector") -or (ObjectClass -eq "msExchMDB")} -server $server -Properties *
 		if(($error -like '*timeout*') -or ($error -like '*invalid enumeration context*'))
 			{
 			$i = 1
@@ -1296,7 +1304,7 @@ if($ISets -eq $true)
 				$resultspagesize = 256 - $i * 40
 				write-output -inputobject "LDAP time out, trying again with ResultPageSize $($resultspagesize)"
 				$error.clear()
-				$SMTP = Get-ADObject -ResultPageSize $resultspagesize -searchbase $root.configurationNamingContext -filter {(ObjectClass -eq "msExchTransportRule") -or (ObjectClass -eq "msExchAcceptedDomain")  -or (ObjectClass -eq "msExchRoutingSMTPConnector")  -or (ObjectClass -eq "msExchSmtpReceiveConnector")} -server $server -Properties *
+				$SMTP = Get-ADObject -ResultPageSize $resultspagesize -searchbase $root.configurationNamingContext -filter {(ObjectClass -eq "msExchTransportRule") -or (ObjectClass -eq "msExchAcceptedDomain")  -or (ObjectClass -eq "msExchRoutingSMTPConnector")  -or (ObjectClass -eq "msExchSmtpReceiveConnector") -or (ObjectClass -eq "msExchMDB")} -server $server -Properties *
 				$i++
 				}
 			if($SMTP){write-output -inputobject "LDAP query succeeded with different ResultPageSize"}
@@ -1305,13 +1313,13 @@ if($ISets -eq $true)
 		$criticalobjects += $SMTP
 		$countSMTP = ($SMTP | measure-object).count
 				if($error)
-				{ "$(Get-TimeStamp) Error while retrieving mail flow related objects $($error)" | out-file log-adexport.log -append ; $error.clear() }
+				{ "$(Get-TimeStamp) Error while retrieving mail flow and storage related objects $($error)" | out-file log-adexport.log -append ; $error.clear() }
 				else
 				{
 				if($SMTP)
-						{"$(Get-TimeStamp) Number of mail flow related objects: $($countSMTP)" | out-file log-adexport.log -append}
+						{"$(Get-TimeStamp) Number of mail flow and storage related objects: $($countSMTP)" | out-file log-adexport.log -append}
 					else
-						{"$(Get-TimeStamp) Cannot read mail flow objects with the account running the script" | out-file log-adexport.log -append}
+						{"$(Get-TimeStamp) Cannot read mail flow and storage related objects with the account running the script" | out-file log-adexport.log -append}
 				}
 		#Getting RBAC rol assignements
 		"$(Get-TimeStamp) Retrieving RBAC role assignements" | out-file log-adexport.log -append
@@ -1464,8 +1472,8 @@ if($ISets -eq $true)
 		$gcobjects += $search.FindOne() | Convert-ADSearchResult
 		if($error)
 			{ "$(Get-TimeStamp) Error while retrieving Exchange Windows Permissions or Exchange servers groups $($error)" | out-file log-adexport.log -append ; $error.clear() }
-		# Fetching transport rules, accepted domains and SMTP connectors
-		$SMTP = Get-ADObject -searchbase $root.configurationNamingContext -filter {(ObjectClass -eq "msExchTransportRule") -or (ObjectClass -eq "msExchAcceptedDomain")  -or (ObjectClass -eq "msExchRoutingSMTPConnector")  -or (ObjectClass -eq "msExchSmtpReceiveConnector")} -server $server -Properties *
+		# Fetching transport rules, accepted domains, SMTP connectors and Mailbox databases
+		$SMTP = Get-ADObject -searchbase $root.configurationNamingContext -filter {(ObjectClass -eq "msExchTransportRule") -or (ObjectClass -eq "msExchAcceptedDomain")  -or (ObjectClass -eq "msExchRoutingSMTPConnector")  -or (ObjectClass -eq "msExchSmtpReceiveConnector") -or (ObjectClass -eq "msExchMDB")} -server $server -Properties *
 
 		if(($error -like '*timeout*') -or ($error -like '*invalid enumeration context*'))
 			{
@@ -1475,7 +1483,7 @@ if($ISets -eq $true)
 				$resultspagesize = 256 - $i * 40
 				write-output -inputobject "LDAP time out, trying again with ResultPageSize $($resultspagesize)"
 				$error.clear()
-				$SMTP = Get-ADObject -ResultPageSize $resultspagesize -searchbase $root.configurationNamingContext -filter {(ObjectClass -eq "msExchTransportRule") -or (ObjectClass -eq "msExchAcceptedDomain")  -or (ObjectClass -eq "msExchRoutingSMTPConnector")  -or (ObjectClass -eq "msExchSmtpReceiveConnector")} -server $server -Properties *
+				$SMTP = Get-ADObject -ResultPageSize $resultspagesize -searchbase $root.configurationNamingContext -filter {(ObjectClass -eq "msExchTransportRule") -or (ObjectClass -eq "msExchAcceptedDomain")  -or (ObjectClass -eq "msExchRoutingSMTPConnector")  -or (ObjectClass -eq "msExchSmtpReceiveConnector") -or (ObjectClass -eq "msExchMDB")} -server $server -Properties *
 				$i++
 				}
 			if($SMTP){write-output -inputobject "LDAP query succeeded with different ResultPageSize"}
@@ -1485,13 +1493,13 @@ if($ISets -eq $true)
 		$criticalobjects += $SMTP
 		$countSMTP = ($SMTP | measure-object).count
 				if($error)
-					{ "$(Get-TimeStamp) Error while retrieving mail flow related objects $($error)" | out-file log-adexport.log -append ; $error.clear() }
+					{ "$(Get-TimeStamp) Error while retrieving mail flow and storage related objects $($error)" | out-file log-adexport.log -append ; $error.clear() }
 				else
 					{
 					if($SMTP)
-						{"$(Get-TimeStamp) Number of mail flow related objects: $($countSMTP)" | out-file log-adexport.log -append}
+						{"$(Get-TimeStamp) Number of mail flow and storage related objects: $($countSMTP)" | out-file log-adexport.log -append}
 					else
-						{"$(Get-TimeStamp) Cannot read mail flow objects with the account running the script" | out-file log-adexport.log -append}
+						{"$(Get-TimeStamp) Cannot read mail flow and storage related objects with the account running the script" | out-file log-adexport.log -append}
 					}
 
 		#Getting RBAC role assignements
