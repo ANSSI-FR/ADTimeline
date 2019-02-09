@@ -31,6 +31,7 @@ Objects considered of interest retrieved by the script include:
 - Cross Reference containers.
 - Exchange RBAC roles and accounts assigned to a role.
 - Exchange mail flow configuration objects.
+- Exchange mailbox databases objects.
 - Deleted objects under the configuration partition.
 - Dynamic objects.
 - The directory service and RID manager objects.
