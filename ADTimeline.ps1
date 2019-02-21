@@ -1910,7 +1910,7 @@ foreach ($criticalobject in $criticalobjects)
 # Sort by ftimeLastOriginatingChange to generate timeline and export as csv
 "$(Get-TimeStamp) Sorting AD replication metadata to generate timeline " | out-file log-adexport.log -append
 
-$Replinfo | Sort-Object -Property ftimeLastOriginatingChange | export-csv timeline.csv -delimiter ";"
+$Replinfo | Sort-Object -Property ftimeLastOriginatingChange | export-csv timeline.csv -delimiter ";" -NoTypeInformation
     if($error)
         { "$(Get-TimeStamp) Error while sortig timeline $($error)" | out-file log-adexport.log -append ; $error.clear() }
     else
