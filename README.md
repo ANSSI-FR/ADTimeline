@@ -49,7 +49,7 @@ Objects considered of interest retrieved by the script include:
 ## Prerequisites: <a name="prerequisites"></a>
 
 - The account launching the script should be able to read objects in the tombstone (Deleted Objects Container) and some parts of the Exchange settings located in the configuration partition (View-Only Organization management). Delegation can be tricky to setup (especially for reading the tombstone). That is why we advise you to run the script with a domain admin account. If you launch the script as a standard user, it will process the timeline without the objects mentioned.
-- Computer should run Windows NT 6.1 or later and have the Active Directory Powershell module installed (part of RSAT-AD-Tools).
+- Computer should run Windows NT 6.1 or later with PowerShell 2.0 or later and have the Active Directory Powershell module installed (part of RSAT-AD-Tools).
 - If you enabled PowerShell Constrained Language Mode the script might fail (calling $error.clear()). Consider whitelisting the script via your device guard policy.
 - If you are using offline mode install the ADLDS role on your analysis machine in order to use dsamain.exe and mount the NTDS database.
 
