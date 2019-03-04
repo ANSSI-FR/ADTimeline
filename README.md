@@ -89,7 +89,18 @@ PS> import-clixml gcADobjects.xml
 
 ## Custom groups <a name="groups"></a>
 
-If you want to include custom AD groups in the timeline (for example virtualization admin groups, network admins, VIP groups...) just uncomment and edit the following array at the  begining of the script:
+If you want to include custom AD groups in the timeline (for example virtualization admin groups, network admins, VIP groups...) use the *Customgroups* parameter.
+
+*Customgroups* parameter can be a string with multiple group comma separated (no space):
+```powershell
+PS>./ADTimeline -customgroups "VIP-group1,ESX-Admins,Tier1-admins"
+```
+*Customgroups* parameter can also be an array, in case you import the list from a file (one group per line):
+```powershell
+PS>$customgroups = get-content customgroups.txt
+PS>./ADTimeline -customgroups $customgroups
+```
+If you do not want to use a parameter you can also uncomment and edit the following array at the  begining of the script:
 ```powershell
 $groupscustom = ("VIP-group1","ESX-Admis","Tier1-admins")
 ```
