@@ -3,14 +3,41 @@
 # Issues and PR welcome https://github.com/ANSSI-FR/ADTimeline
 
 # Use paramater server if running offline mode or GC is not found
-Param(
-[parameter(Mandatory=$false)][string]$server = $null
+# Use parameter customgroups to retrieve replication metadata from specific groups.
+# customgroups argument can be a string with multiple group comma separated (no space)
+# PS>./ADTimeline -customgroups "VIP-group1,ESX-Admins,Tier1-admins"
+# customgroups can also be an array, in case you import the list from a file (one group per line)
+# PS>$customgroups = get-content customgroups.txt
+# PS>./ADTimeline -customgroups $customgroups
+
+Param (
+[parameter(Mandatory=$false)][string]$server = $null,
+[parameter(Mandatory=$false)]$customgroups = $null
 )
 
-#Custom to groups to retrieve replication metadata can be added to the timeline, just edit the below $groupscustom variable
-$groupscustom = $null
-# Example of custom groups
-# $groupscustom = ("VIP-group1","ESX-Admis","Tier1-admins")...
+if($customgroups)
+	{
+	if(($customgroups.gettype()).FullName -eq "System.String")
+		{
+		$groupscustom = $customgroups.split(",")
+		write-output -inputobject "---- Custom groups argument is a string ----"
+		}
+	elseif(($customgroups.gettype()).FullName -eq "System.Object[]")
+		{
+		$groupscustom = $customgroups
+		"---- Custom groups argument is an array ----"
+		}
+	else 
+		{
+		write-output -inputobject "---- Wrong argument object type ----"
+		Exit $WRONG_ARG_TYPE
+		}
+		
+	}
+
+# You can also directly uncomment and edit the below $customgroups variable if you do not want to set an argument
+# Example of custom groups variable
+# $groupscustom = ("VIP-group1","ESX-Admins","Tier1-admins")
 
 
 # Set Variables for error handling 
@@ -18,6 +45,8 @@ Set-Variable -name ERR_BAD_OS_VERSION -option Constant -value 1
 Set-Variable -name ERR_NO_AD_MODULE   -option Constant -value 2
 Set-Variable -name ERR_NO_GC_FOUND   -option Constant -value 3
 Set-Variable -name ERR_GC_BIND_FAILED   -option Constant -value 4
+Set-Variable -name WRONG_ARG_TYPE   -option Constant -value 5
+
 
 # AD Timeline is supported on Windows 6.1 +
 if([Environment]::OSVersion.version -lt (new-object 'Version' 6,1))
@@ -53,18 +82,16 @@ if(-not($server))
 	}
 
 $error.clear()
-
 # LDAP root information, to retrieve partitions paths
 $root = Get-ADRootDSE -server $server
 
 if($error)
 	{
-	write-output -inputobject "---- Connexion au DC $($server) impossible ----"
+	write-output -inputobject "---- Retrieving AD root on $($server) failed ----"
 	Exit $ERR_GC_BIND_FAILED
 	}
 
 # Check if script is running offline or online and set GC port
-
 if([string]$server.contains(":") -eq $true)
 	{
 	$gcport = [int]::parse($server.split(":")[1]) + 2
@@ -72,16 +99,18 @@ if([string]$server.contains(":") -eq $true)
 	$isonline = $false
 	}
 else {
-	$IsDCgc = (get-ADDomainController $server).IsGlobalCatalog
-		if($IsDCgc)
+	$error.clear()
+	$dntstroot = [void]([adsi]"LDAP://$server").distinguishedName
+	[void][adsi]"GC://$server/$dntstroot"
+	if($error)
+		{
+		write-output -inputobject "---- DC is not Global Catalog, please provide a GC with the server argument ----"
+		Exit $ERR_NO_GC_FOUND	
+		}
+	Else
 		{
 		$gc = $server + ':3268'
 		$isonline = $true
-		}
-		Else
-		{
-		write-output -inputobject "---- DC is not Global Catalog, please provide a GC with the server argument ----"
-		Exit $ERR_NO_GC_FOUND
 		}
 	}
 
@@ -1605,7 +1634,6 @@ if($groupscustom)
 
 
 
-
  #Get dynamic objects
  $DynObjects = Get-ADObject  -SearchBase ($root.defaultNamingContext) -SearchScope SubTree -Filter {ObjectClass -eq "dynamicObject"}  -Server $server -properties *
  if(($error -like '*timeout*') -or ($error -like '*invalid enumeration context*'))
@@ -1770,7 +1798,7 @@ write-output -inputobject "----$($countcrit) Objects to process ----"
 
 $groupClass = "CN=Group," + $root.SchemaNamingContext
 # Initializing AD replication metadata object
-$Replinfo = @()
+$Replinfo = [System.Collections.ArrayList]@()
 $i = 0
 
 foreach ($criticalobject in $criticalobjects)
@@ -1829,7 +1857,7 @@ foreach ($criticalobject in $criticalobjects)
 	    	add-member -InputObject $tmpobj -MemberType NoteProperty -Name usnLocalChange -Value $metada.usnLocalChange
 
 	    	    # Append temp object to global AD replication metadata object
-	    	    $Replinfo += $tmpobj
+	    	    [void]$Replinfo.add($tmpobj)
 		    if($error){ "$(Get-TimeStamp) Error while editing global AD replication metadata object $($error) for $($criticalobject.DistinguishedName)" | out-file log-adexport.log -append ; $error.clear() }
 		    }
         }
@@ -1892,7 +1920,7 @@ foreach ($criticalobject in $criticalobjects)
 	    				add-member -InputObject $tmpobj -MemberType NoteProperty -Name usnOriginatingChange -Value $metada.usnOriginatingChange
 						add-member -InputObject $tmpobj -MemberType NoteProperty -Name usnLocalChange -Value $metada.usnLocalChange
 
-	    				$Replinfo += $tmpobj
+	    				[void]$Replinfo.add($tmpobj)
 						if($error){ "$(Get-TimeStamp) Error while editing global AD replication metadata object $($error) for $($criticalobject.DistinguishedName)" | out-file log-adexport.log -append ; $error.clear() }
 						}
 
