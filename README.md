@@ -10,7 +10,7 @@
 
 The ADTimeline script generates a timeline based on Active Directory replication metadata for objects considered of interest.  
 Replication metadata gives you the time at which each replicated attribute for a given object was last changed. As a result the timeline of modifications is partial. For each modification of a replicated attribute a version number is incremented.  
-ADTimeline was presented at the [CoRI&IN 2019](https://www.cecyf.fr/activites/recherche-et-developpement/coriin-2019/) (Conférence sur la réponse aux incidents et l’investigation numérique). Slides of the presentation, in french language,  are available [here](https://www.ssi.gouv.fr/publication/investigation-numerique-sur-lannuaire-active-directory-avec-les-metadonnees-de-replication-outil-adtimeline/). 
+ADTimeline was first presented at the [CoRI&IN 2019](https://www.cecyf.fr/activites/recherche-et-developpement/coriin-2019/) (Conférence sur la réponse aux incidents et l’investigation numérique). Slides of the presentation, in french language,  are available [here](https://www.ssi.gouv.fr/publication/investigation-numerique-sur-lannuaire-active-directory-avec-les-metadonnees-de-replication-outil-adtimeline/). It was also presented at the [Amsterdam 2019 FIRST Technical Colloquium](https://www.first.org/events/colloquia/amsterdam2019/program#pActive-Directory-forensics-with-replication-metadata-ADTimeline-tool), slides in english are available [here](https://www.ssi.gouv.fr/en/actualite/adtimeline-active-directory-forensics-with-replication-metadata-at-the-first-technical-colloquium/).
 
 Objects considered of interest retrieved by the script include:
 
