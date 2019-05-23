@@ -22,6 +22,7 @@ Objects considered of interest retrieved by the script include:
 - Deleted users (i.e. tombstoned).
 - Objects protected by the SDProp process (i.e. AdminCount equals 1).
 - The AdminSDHolder object.
+- Objects having an ACE on the AdminSDHolder object.
 - Class Schema objects.
 - Existing and deleted Group Policy objects.
 - DPAPI secrets.
@@ -44,6 +45,7 @@ Objects considered of interest retrieved by the script include:
 - Dynamic objects.
 - The directory service and RID manager objects.
 - The Pre Windows 2000 compatible access, Cert publishers, GPO creator owners and DNS Admins groups.
+- ADFS DKM containers.
 - Custom groups which have to be manually defined.
 
 ## Prerequisites: <a name="prerequisites"></a>

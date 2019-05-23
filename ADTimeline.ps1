@@ -216,30 +216,48 @@ else
 	"$(Get-TimeStamp) Domain DistinguishedName is: $($dom.distinguishedName) " | out-file log-adexport.log -append
 	"$(Get-TimeStamp) Domain SID is: $($domSID)" | out-file log-adexport.log -append
 	#Getting accounts having an ACE on domain root
+
 	$accountsACEondomain = ($dom.ntsecuritydescriptor).getaccessrules($true , $true , [System.Security.Principal.SecurityIdentifier]) | Where-Object {$_.IdentityReference -like "S-1-5-21-*"} | group-object -property IdentityReference
+
 	if($error)
 		{ "$(Get-TimeStamp) Error while retrieving accounts having an ACE on domain $($error)" | out-file log-adexport.log -append ; $error.clear() }
 	else
 		{
 		$usrcount = 0
+		$ismsol = $false
+		$userACE = $null
 		foreach($accountACE in $accountsACEondomain)
-			{
-			$userACE = Get-ADObject -Filter {ObjectSID -eq $accountACE.Name} -Server $server -properties *
+			{#If SID is from current domain launch LDAP query, otherwise try GC
+			if($accountACE.Name -like "$domSID*")
+				{
+				$userACE = Get-ADObject -Filter {ObjectSID -eq $accountACE.Name} -Server $server -properties *
+				if($userACE){$criticalobjects += $userACE}
+				}
+			else
+				{
+				$search = new-object System.DirectoryServices.DirectorySearcher
+				$search.searchroot = [ADSI]"GC://$($gc)"
+				$search.filter = "(ObjectSID=$($accountACE.Name))"
+				$userACE = $search.findone() | Convert-ADSearchResult
+				if($userACE){$gcobjects += $userACE}
+				}
 			if($error)
 				{ "$(Get-TimeStamp) Error while getting object SID $($accountACE.Name) with error $($error)" | out-file log-adexport.log -append ; $error.clear() }
 			else
-				{
-				$criticalobjects += $userACE
+				{#Check if objectclass is user, if yes check if name matches AADConnect account
 				if(($userACE.ObjectClass -eq "user") -or ($userACE.ObjectClass -eq "inetOrgPerson"))
-					{$usrcount++}
+					{$usrcount++
+					if($userACE.SamAccountName -like "MSOL_*")
+						{$ismsol = $true}
+					}
 				}
 			
 			}
 		}
-		if($usrcount -ge 1)
-			{
-			 "$(Get-TimeStamp) Number of user accounts having an ACE on domain root $($usrcount)" | out-file log-adexport.log -append
-			}
+		 "$(Get-TimeStamp) Number of user accounts having an ACE on domain root: $($usrcount)" | out-file log-adexport.log -append
+			if($ismsol)
+				{"$(Get-TimeStamp) Account starting with MSOL having an ACE on domain root, Default Azure AD connect installation might be setup" | out-file log-adexport.log -append}
+			
 	}
 
 #Getting root of the configuration partition
@@ -785,6 +803,46 @@ else {
 	"$(Get-TimeStamp) Number of objects of interest under the system container (GPOs, domain trusts, DPAPI secrets, AdminSDHolder and domainPolicy): $($countsysobjects)" | out-file log-adexport.log -append
 }
 
+$adminSDHolder = $sysobjects | where{($_.Name -eq "AdminSDHolder") -and ($_.ObjectClass -eq "Container")}
+if($adminSDHolder)
+	{
+	$accountsACEadminSDHolder = ($adminSDHolder.ntsecuritydescriptor).getaccessrules($true , $true , [System.Security.Principal.SecurityIdentifier]) | Where-Object {$_.IdentityReference -like "S-1-5-21-*"} | group-object -property IdentityReference
+	if($error)
+		{ "$(Get-TimeStamp) Error while retrieving accounts having an ACE on AdminSDHolder object $($error)" | out-file log-adexport.log -append ; $error.clear() }
+	else
+		{
+		$usrcount = 0
+		$userACE = $null
+		foreach($accountACE in $accountsACEadminSDHolder)
+			{
+			#If SID is from current domain launch LDAP query, otherwise try GC
+			if($accountACE.Name -like "$domSID*")
+				{
+				$userACE = Get-ADObject -Filter {ObjectSID -eq $accountACE.Name} -Server $server -properties *
+				if($userACE){$criticalobjects += $userACE}
+				}
+			else
+				{
+				$search = new-object System.DirectoryServices.DirectorySearcher
+				$search.searchroot = [ADSI]"GC://$($gc)"
+				$search.filter = "(ObjectSID=$($accountACE.Name))"
+				$userACE = $search.findone() | Convert-ADSearchResult
+				if($userACE){$gcobjects += $userACE}
+				}
+			if($error)
+				{ "$(Get-TimeStamp) Error while getting object SID $($accountACE.Name) with error $($error)" | out-file log-adexport.log -append ; $error.clear() }
+			else
+				{#Check if objectclass is user
+				if(($userACE.ObjectClass -eq "user") -or ($userACE.ObjectClass -eq "inetOrgPerson"))
+					{$usrcount++
+					}
+				}
+			
+			}
+		}
+		 "$(Get-TimeStamp) Number of user accounts having an ACE on AdminSDHolder object: $($usrcount)" | out-file log-adexport.log -append
+	}
+
 #Loop through domain trusts and return their state
 $trusts = $sysobjects | where-object{$_.ObjectClass -eq "trustedDomain"}
 
@@ -1268,6 +1326,212 @@ Else
 	}
 
 
+$IsADFS = $false
+$IsADFSroot = $false
+$IsADFScurrent = $false
+#Processing ADFS
+if($root.rootDomainNamingContext -eq $root.DefaultNamingContext)
+	{
+	#If root domain just check ADFS in current domain
+	$ADFS = "CN=ADFS,CN=Microsoft,CN=Program Data," + ($root.DefaultNamingContext)
+	$IsADFS = [ADSI]::Exists("GC://$($gc)/$($ADFS)")
+	if($error)
+		{ "$(Get-TimeStamp) Error while testing existance of ADFS objects $($error)" | out-file log-adexport.log -append ; $error.clear() }
+	if($IsADFS -eq $true)
+		{
+		#Current domain is root domain using LDAP to retrieve ADFS Objects	
+		$ADFSObjects = get-ADObject -searchbase $ADFS -filter * -server $server -properties *
+
+		if(($error -like '*timeout*') -or ($error -like '*invalid enumeration context*'))
+			{
+			$i = 1
+			while((($error -like '*timeout*') -or ($error -like '*invalid enumeration context*')) -and ($i -le 5))
+				{
+				$resultspagesize = 256 - $i * 40
+				write-output -inputobject "LDAP time out, trying again with ResultPageSize $($resultspagesize)"
+				$error.clear()
+				$ADFSObjects = Get-ADObject -ResultPageSize $resultspagesize -searchbase $ADFS -filter * -server $server -properties *
+				$i++
+				}
+			if($ADFSObjects){write-output -inputobject "LDAP query succeeded with different ResultPageSize"}
+			else{write-output -inputobject "LDAP query failure despite different ResultPageSize, resuming script"}
+			}
+		$criticalobjects +=  $ADFSObjects
+		$ADFSFarms = $ADFSObjects | where{($_.ObjectClass -eq "Container") -and ($_.Name -ne "ADFS")}
+		$ADFSrootobj = $ADFSObjects | where{($_.ObjectClass -eq "Container") -and ($_.Name -eq "ADFS")}
+		$countADFSFarms = ( $ADFSFarms | measure-object).count
+		if($error)
+			{ "$(Get-TimeStamp) Error while retrieving ADFS Objects $($error)" | out-file log-adexport.log -append ; $error.clear() }
+		else {"$(Get-TimeStamp) Number of ADFS farms (containers) in the current domain: $($countADFSFarms)" | out-file log-adexport.log -append}
+		
+		# If ADFS farms are found searching for service accounts running ADFS, ACE is present on objects storing DKM information
+		if($ADFSFarms -and $ADFSrootobj)
+			{
+			$accountsACEADFSRoot = 	($ADFSrootobj.ntsecuritydescriptor).getaccessrules($true , $true , [System.Security.Principal.SecurityIdentifier]) | Where-Object {$_.IdentityReference -like "S-1-5-21-*"} | group-object -property IdentityReference	
+			foreach($ADFSFarm in $ADFSFarms)
+				{
+				#Comparing ACL of ADFS root object and child objects (i.e) farms in order to retrieve ADFS service accounts
+				$accountsACEADFSFarm = ($ADFSFarm.ntsecuritydescriptor).getaccessrules($true , $true , [System.Security.Principal.SecurityIdentifier]) | Where-Object {$_.IdentityReference -like "S-1-5-21-*"} | group-object -property IdentityReference
+				$compareACEfarmroot = compare-object $accountsACEADFSFarm $accountsACEADFSRoot -Property Name
+				if($error)
+					{ "$(Get-TimeStamp) Error while retrieving accounts having an ACE on ADFS Farm object $($error)" | out-file log-adexport.log -append ; $error.clear() }
+				else
+					{
+					$userACE = $null
+					foreach($accountACE in $compareACEfarmroot)
+						{
+						#If ACE for the given SID is in the current domain, use LDAP	
+						if($accountACE.Name -like "$domSID*")
+							{
+							$sidtomatch = $accountACE.Name
+							$userACE = Get-ADObject -Filter {ObjectSID -eq $sidtomatch} -Server $server -properties *
+							if($userACE){$criticalobjects += $userACE}
+							}
+						#Otherwise try GC
+						else
+							{
+							$search = new-object System.DirectoryServices.DirectorySearcher
+							$search.searchroot = [ADSI]"GC://$($gc)"
+							$sidtomatch = $accountACE.Name
+							$search.filter = "(ObjectSID=$($sidtomatch))"
+							$userACE = $search.findone() | Convert-ADSearchResult
+							if($userACE){$gcobjects += $userACE}
+							}
+						if($error)
+							{ "$(Get-TimeStamp) Error while getting object SID $($accountACE.Name) with error $($error)" | out-file log-adexport.log -append ; $error.clear() }
+					
+						}
+					}
+
+				}
+		
+			}
+		}
+
+
+	}
+else 
+	{
+	#Domain is child domain. Check if ADFS is in current domain or parent domain.
+	$ADFSroot = "CN=ADFS,CN=Microsoft,CN=Program Data," + ($root.rootDomainNamingContext)
+	$IsADFSroot = [ADSI]::Exists("GC://$($gc)/$($ADFSroot)")
+	$ADFScurrent = "CN=ADFS,CN=Microsoft,CN=Program Data," + ($root.DefaultNamingContext)
+	$IsADFScurrent = [ADSI]::Exists("GC://$($gc)/$($ADFScurrent)")
+	if($error)
+		{ "$(Get-TimeStamp) Error while testing existance of ADFS objects $($error)" | out-file log-adexport.log -append ; $error.clear() }
+	if($IsADFSroot -eq $true)
+		{
+		$search = new-object System.DirectoryServices.DirectorySearcher
+		$search.searchroot = [ADSI]"GC://$($gc)/$($ADFSroot)"
+		$search.pagesize = 256
+		$search.filter = "(ObjectClass=*)"
+		$ADFSObjects = $search.FindAll() | Convert-ADSearchResult
+		$gcobjects +=  $ADFSObjects
+		$ADFSFarms = $ADFSObjects | where{($_.ObjectClass -eq "Container") -and ($_.Name -ne "ADFS")}
+		$countADFSFarms = ( $ADFSFarms | measure-object).count
+		if($error)
+			{ "$(Get-TimeStamp) Error while retrieving ADFS Objects $($error)" | out-file log-adexport.log -append ; $error.clear() }
+		else {"$(Get-TimeStamp) Number of ADFS farms (containers) in the root domain: $($countADFSFarms)" | out-file log-adexport.log -append}
+		}
+	if($IsADFScurrent -eq $true)
+		{
+		$ADFSObjects = get-ADObject -searchbase $ADFScurrent -filter * -server $server -properties *
+		if(($error -like '*timeout*') -or ($error -like '*invalid enumeration context*'))
+			{
+			$i = 1
+			while((($error -like '*timeout*') -or ($error -like '*invalid enumeration context*')) -and ($i -le 5))
+				{
+				$resultspagesize = 256 - $i * 40
+				write-output -inputobject "LDAP time out, trying again with ResultPageSize $($resultspagesize)"
+				$error.clear()
+				$ADFSObjects = Get-ADObject -ResultPageSize $resultspagesize -searchbase $ADFS -filter * -server $server -properties *
+				$i++
+				}
+			if($ADFSObjects){write-output -inputobject "LDAP query succeeded with different ResultPageSize"}
+			else{write-output -inputobject "LDAP query failure despite different ResultPageSize, resuming script"}
+			}
+		$criticalobjects +=  $ADFSObjects
+		$ADFSFarms = $ADFSObjects | where{($_.ObjectClass -eq "Container") -and ($_.Name -ne "ADFS")}
+		$ADFSrootobj = $ADFSObjects | where{($_.ObjectClass -eq "Container") -and ($_.Name -eq "ADFS")}
+		$countADFSFarms = ( $ADFSFarms | measure-object).count
+		if($error)
+			{ "$(Get-TimeStamp) Error while retrieving ADFS Objects $($error)" | out-file log-adexport.log -append ; $error.clear() }
+		else {"$(Get-TimeStamp) Number of ADFS farms (containers) in the current domain: $($countADFSFarms)" | out-file log-adexport.log -append}
+	
+		# If ADFS farms are found searching for service accounts running ADFS, ACE is present on objects storing DKM information
+		if($ADFSFarms -and $ADFSrootobj)
+			{
+			$accountsACEADFSRoot = 	($ADFSrootobj.ntsecuritydescriptor).getaccessrules($true , $true , [System.Security.Principal.SecurityIdentifier]) | Where-Object {$_.IdentityReference -like "S-1-5-21-*"} | group-object -property IdentityReference	
+			foreach($ADFSFarm in $ADFSFarms)
+				{
+				#Comparing ACL of ADFS root object and child objects (i.e) farms in order to retrieve ADFS service accounts
+				$accountsACEADFSFarm = ($ADFSFarm.ntsecuritydescriptor).getaccessrules($true , $true , [System.Security.Principal.SecurityIdentifier]) | Where-Object {$_.IdentityReference -like "S-1-5-21-*"} | group-object -property IdentityReference
+				$compareACEfarmroot = compare-object $accountsACEADFSFarm $accountsACEADFSRoot -Property Name
+				if($error)
+					{ "$(Get-TimeStamp) Error while retrieving accounts having an ACE on ADFS Farm object $($error)" | out-file log-adexport.log -append ; $error.clear() }
+				else
+					{
+					$userACE = $null
+					foreach($accountACE in $compareACEfarmroot)
+						{
+						#If ACE for the given SID is in the current domain, use LDAP	
+						if($accountACE.Name -like "$domSID*")
+							{
+							$sidtomatch = $accountACE.Name
+							$userACE = Get-ADObject -Filter {ObjectSID -eq $sidtomatch} -Server $server -properties *
+							if($userACE){$criticalobjects += $userACE}
+							}
+						#Otherwise try GC
+						else
+							{
+							$search = new-object System.DirectoryServices.DirectorySearcher
+							$search.searchroot = [ADSI]"GC://$($gc)"
+							$sidtomatch = $accountACE.Name
+							$search.filter = "(ObjectSID=$($sidtomatch))"
+							$userACE = $search.findone() | Convert-ADSearchResult
+							if($userACE){$gcobjects += $userACE}
+							}
+						if($error)
+							{ "$(Get-TimeStamp) Error while getting object SID $($accountACE.Name) with error $($error)" | out-file log-adexport.log -append ; $error.clear() }
+				
+						}
+					}
+				}		
+			}	
+		}
+	
+	}
+# If ADFS is installed, check if ADFS device registration is enabled
+if(($IsADFS -eq $true) -or ($IsADFSroot -eq $true) -or ($IsADFScurrent -eq $true))
+	{
+	$ADFSDevicereg = "CN=Device Registration Configuration,CN=Services," + ($root.configurationNamingContext)
+	$isADFSDevicereg = [ADSI]::Exists("LDAP://$($server)/$($ADFSDevicereg)")
+	if($isADFSDevicereg)
+		{
+		$ADFSDeviceregObjects = get-ADObject -searchbase $ADFSDevicereg -filter * -server $server -properties *
+		if(($error -like '*timeout*') -or ($error -like '*invalid enumeration context*'))
+			{
+			$i = 1
+			while((($error -like '*timeout*') -or ($error -like '*invalid enumeration context*')) -and ($i -le 5))
+				{
+				$resultspagesize = 256 - $i * 40
+				write-output -inputobject "LDAP time out, trying again with ResultPageSize $($resultspagesize)"
+				$error.clear()
+				$ADFSDeviceregObjects = Get-ADObject -ResultPageSize $resultspagesize -searchbase $ADFSDevicereg -filter * -server $server -properties *
+				$i++
+				}
+				if($ADFSDeviceregObjects){write-output -inputobject "LDAP query succeeded with different ResultPageSize"}
+				else{write-output -inputobject "LDAP query failure despite different ResultPageSize, resuming script"}
+			}
+			$criticalobjects +=  $ADFSDeviceregObjects
+			$countADFSDeviceregObjects = ( $ADFSDeviceregObjects | measure-object).count
+			if($error)
+				{ "$(Get-TimeStamp) Error while retrieving ADFS device registration objects $($error)" | out-file log-adexport.log -append ; $error.clear() }
+			else {"$(Get-TimeStamp) Number of ADFS device registration objects: $($countADFSDeviceregObjects)" | out-file log-adexport.log -append}
+		}
+	}
+
+
 #Check if MS Exchange is installed by testing the Exchange Trusted SubSystem (ETS) existance
 $trustedSubSystem = "CN=Exchange Trusted Subsystem,OU=Microsoft Exchange Security Groups," + ($root.rootDomainNamingContext)
 $ISets = [ADSI]::Exists("GC://$($gc)/$($trustedSubSystem)")
@@ -1745,6 +2009,10 @@ if($rootschema){Remove-variable rootschema}
 if($rootconf){Remove-variable rootconf}
 if($DynObjectswithttl){Remove-variable DynObjectswithttl}
 if($DynObjects){Remove-variable DynObjects}
+if($ADFSObjects){Remove-variable ADFSObjects}
+if($ADFSFarms){Remove-variable ADFSFarms}
+if($ADFSrootobj){Remove-variable ADFSrootobj}
+if($ADFSDeviceregObjects){Remove-variable ADFSDeviceregObjects}
 
 
 
