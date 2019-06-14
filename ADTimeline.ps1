@@ -124,16 +124,21 @@ function Get-TimeStamp
     return "{0:yyyy-MM-dd} {0:HH:mm:ss}" -f (get-date)
     }
 
-"$(Get-TimeStamp) Starting script on $($server)" | out-file log-adexport.log
+"$(Get-TimeStamp) Starting script on $($server)" | out-file logfile.log
 
 if($isonline -eq $true)
 	{
-	"$(Get-TimeStamp) Script running in online mode" | out-file log-adexport.log
+	"$(Get-TimeStamp) Script running in online mode" | out-file logfile.log
 	}
 else
 	{
-	"$(Get-TimeStamp) Script running in offline mode" | out-file log-adexport.log
+	"$(Get-TimeStamp) Script running in offline mode" | out-file logfile.log
 	}
+
+# Getting folder fully qualifed name length to compute MAX_PATH
+$maxfilenamelen = 0
+$folderlen = ((get-item .\logfile.log).directoryName).length
+$maxfilenamelen = 256 - $folderlen + 2
 
 # Function adapted from https://www.petri.com/expanding-active-directory-searcher-powershell Added SID processing
 Function Convert-ADSearchResult
@@ -206,21 +211,22 @@ if(($error -like '*timeout*') -or ($error -like '*invalid enumeration context*')
 $criticalobjects += $dom
 
 if($error)
-    { "$(Get-TimeStamp) Error while retrieving domain root information $($error)" | out-file log-adexport.log -append ; $error.clear() }
+    { "$(Get-TimeStamp) Error while retrieving domain root information $($error)" | out-file logfile.log -append ; $error.clear() }
 else
 	{
 	#Get current domain SID and PDCe, will be used later
 	$domSID = $dom.ObjectSID.value
 	$PDCe = (($dom.fsmoRoleOwner).replace($root.configurationNamingContext,"")).replace("CN=NTDS Settings,","")
-	"$(Get-TimeStamp) Domain root information retrieved" | out-file log-adexport.log -append
-	"$(Get-TimeStamp) Domain DistinguishedName is: $($dom.distinguishedName) " | out-file log-adexport.log -append
-	"$(Get-TimeStamp) Domain SID is: $($domSID)" | out-file log-adexport.log -append
+	"$(Get-TimeStamp) Domain root information retrieved" | out-file logfile.log -append
+	"$(Get-TimeStamp) Domain DistinguishedName is: $($dom.distinguishedName) " | out-file logfile.log -append
+	"$(Get-TimeStamp) Domain SID is: $($domSID)" | out-file logfile.log -append
+	$domainfqdn = (($dom.distinguishedName).replace("DC=","")).replace(",",".")
 	#Getting accounts having an ACE on domain root
 
 	$accountsACEondomain = ($dom.ntsecuritydescriptor).getaccessrules($true , $true , [System.Security.Principal.SecurityIdentifier]) | Where-Object {$_.IdentityReference -like "S-1-5-21-*"} | group-object -property IdentityReference
 
 	if($error)
-		{ "$(Get-TimeStamp) Error while retrieving accounts having an ACE on domain $($error)" | out-file log-adexport.log -append ; $error.clear() }
+		{ "$(Get-TimeStamp) Error while retrieving accounts having an ACE on domain $($error)" | out-file logfile.log -append ; $error.clear() }
 	else
 		{
 		$usrcount = 0
@@ -242,7 +248,7 @@ else
 				if($userACE){$gcobjects += $userACE}
 				}
 			if($error)
-				{ "$(Get-TimeStamp) Error while getting object SID $($accountACE.Name) with error $($error)" | out-file log-adexport.log -append ; $error.clear() }
+				{ "$(Get-TimeStamp) Error while getting object SID $($accountACE.Name) with error $($error)" | out-file logfile.log -append ; $error.clear() }
 			else
 				{#Check if objectclass is user, if yes check if name matches AADConnect account
 				if(($userACE.ObjectClass -eq "user") -or ($userACE.ObjectClass -eq "inetOrgPerson"))
@@ -254,10 +260,48 @@ else
 			
 			}
 		}
-		 "$(Get-TimeStamp) Number of user accounts having an ACE on domain root: $($usrcount)" | out-file log-adexport.log -append
+		 "$(Get-TimeStamp) Number of user accounts having an ACE on domain root: $($usrcount)" | out-file logfile.log -append
 			if($ismsol)
-				{"$(Get-TimeStamp) Account starting with MSOL having an ACE on domain root, Default Azure AD connect installation might be setup" | out-file log-adexport.log -append}
+				{"$(Get-TimeStamp) Account starting with MSOL having an ACE on domain root, Default Azure AD connect installation might be setup" | out-file logfile.log -append}
 			
+	}
+
+#Renaming log file and setting filenames for result files
+if($domainfqdn)
+	{
+	if($domainfqdn.length -ge $maxfilenamelen)
+		{
+		$logfilename = "logfile_" + $domainfqdn.substring(0,$maxfilenamelen) + ".log"
+		$timelinefilename = "timeline_" + $domainfqdn.substring(0,$maxfilenamelen) + ".csv"
+		$adobjectsfilename = "ADobjects_" + $domainfqdn.substring(0,$maxfilenamelen) + ".xml"
+		$gcADobjectsfilename = "gcADobjects_" + $domainfqdn.substring(0,$maxfilenamelen) + ".xml"
+		}
+	else {
+		$logfilename = "logfile_" + $domainfqdn + ".log"
+		$timelinefilename = "timeline_" + $domainfqdn + ".csv"
+		$adobjectsfilename = "ADobjects_" + $domainfqdn + ".xml"
+		$gcADobjectsfilename = "gcADobjects_" + $domainfqdn + ".xml"
+		}
+	Rename-item ".\logfile.log" $logfilename
+	New-Item -ItemType File -Name $timelinefilename | Out-Null
+	New-Item -ItemType File -Name $adobjectsfilename | Out-Null
+	New-Item -ItemType File -Name $gcADobjectsfilename | Out-Null
+	if($error)
+		{ "$(Get-TimeStamp) Error while setting setting filenames for output files with error $($error)" | out-file logfile.log -append
+		$error.clear()
+		$logfilename = "logfile.log"
+		$timelinefilename = "timeline.csv"
+		$adobjectsfilename = "ADobjects.xml"
+		$gcADobjectsfilename = "gcADobjects.xml"
+		}
+
+	}
+else 
+	{
+	$logfilename = "logfile.log"
+	$timelinefilename = "timeline.csv"
+	$adobjectsfilename = "ADobjects.xml"
+	$gcADobjectsfilename = "gcADobjects.xml"
 	}
 
 #Getting root of the configuration partition
@@ -280,10 +324,10 @@ if(($error -like '*timeout*') -or ($error -like '*invalid enumeration context*')
 $criticalobjects += $rootconf
 
 if($error)
-    { "$(Get-TimeStamp) Error while retrieving root of the configuration partition $($error)" | out-file log-adexport.log -append ; $error.clear() }
+    { "$(Get-TimeStamp) Error while retrieving root of the configuration partition $($error)" | out-file $logfilename -append ; $error.clear() }
 else
 	{
-	"$(Get-TimeStamp) Root of the configuration partition retrieved" | out-file log-adexport.log -append
+	"$(Get-TimeStamp) Root of the configuration partition retrieved" | out-file $logfilename -append
 	}
 
 #Getting root of the schema partition
@@ -306,12 +350,12 @@ if(($error -like '*timeout*') -or ($error -like '*invalid enumeration context*')
 $criticalobjects += $rootschema
 
 if($error)
-    { "$(Get-TimeStamp) Error while retrieving root of the schema partition $($error)" | out-file log-adexport.log -append ; $error.clear() }
+    { "$(Get-TimeStamp) Error while retrieving root of the schema partition $($error)" | out-file $logfilename -append ; $error.clear() }
 else
 	{
 	$SchemaMaster = (($rootschema.fsmoRoleOwner).replace($root.configurationNamingContext,"")).replace("CN=NTDS Settings,","")
-	"$(Get-TimeStamp) Root of the schema partition retrieved" | out-file log-adexport.log -append
-	"$(Get-TimeStamp) Schema version is $($rootschema.objectVersion)" | out-file log-adexport.log -append
+	"$(Get-TimeStamp) Root of the schema partition retrieved" | out-file $logfilename -append
+	"$(Get-TimeStamp) Schema version is $($rootschema.objectVersion)" | out-file $logfilename -append
 	}
 
 
@@ -323,12 +367,12 @@ if($isonline -eq $true)
 	$isda = $mygrps | where-object{($_.SID -eq $Dasid) -or ($_.SID -like "*-519")}
 	if($isda)
 		{
-		"$(Get-TimeStamp) Current user is domain admin or enterprise admin" | out-file log-adexport.log -append
+		"$(Get-TimeStamp) Current user is domain admin or enterprise admin" | out-file $logfilename -append
 		}
 	else
 		{
 		write-output -inputobject "Script not running as domain or enterprise admin, some objects might be missing"
-		"$(Get-TimeStamp) Script not running as domain or enterprise admin, some objects might be missing" | out-file log-adexport.log -append
+		"$(Get-TimeStamp) Script not running as domain or enterprise admin, some objects might be missing" | out-file $logfilename -append
 		}
 	}
 
@@ -356,8 +400,8 @@ if(($error -like '*timeout*') -or ($error -like '*invalid enumeration context*')
 $criticalobjects += $dom1
 $countdom1 = ($dom1 | measure-object).count
 if($error)
-    { "$(Get-TimeStamp) Error while retrieving objects directly under domain root $($error)" | out-file log-adexport.log -append ; $error.clear() }
-else {"$(Get-TimeStamp) Number of objects directly under domain root, OU excluded:  $($countdom1)" | out-file log-adexport.log -append
+    { "$(Get-TimeStamp) Error while retrieving objects directly under domain root $($error)" | out-file $logfilename -append ; $error.clear() }
+else {"$(Get-TimeStamp) Number of objects directly under domain root, OU excluded:  $($countdom1)" | out-file $logfilename -append
 	$inframaster = ((($dom1 | where-object{($_.Name -eq "Infrastructure") -and ($_.ObjectClass -eq "infrastructureUpdate")}).fsmoRoleOwner).replace($root.configurationNamingContext,"")).replace("CN=NTDS Settings,","")
 	}
 
@@ -380,14 +424,14 @@ if(($error -like '*timeout*') -or ($error -like '*invalid enumeration context*')
 $criticalobjects += $SDPropObjects
 $countSDPROP = ($SDPropObjects | measure-object).count
 if($error)
-    { "$(Get-TimeStamp) Error while retrieving objects protected by the SDProp process $($error)" | out-file log-adexport.log -append ; $error.clear() }
-else {"$(Get-TimeStamp) Number of objects protected by the SDProp process: $($countSDPROP)" | out-file log-adexport.log -append}
+    { "$(Get-TimeStamp) Error while retrieving objects protected by the SDProp process $($error)" | out-file $logfilename -append ; $error.clear() }
+else {"$(Get-TimeStamp) Number of objects protected by the SDProp process: $($countSDPROP)" | out-file $logfilename -append}
 
 #Grabing "Pre Windows 2000 Compatibility access group", not recursive...
 $pre2000SID = "S-1-5-32-554"
 $pre2000grp =  Get-ADObject -filter {ObjectSID -eq $pre2000SID} -Server $server -properties *
 if($error)
-	{ "$(Get-TimeStamp) Error while retrieving Pre Windows 2000 Compatibility access group $($error)" | out-file log-adexport.log -append ; $error.clear() }
+	{ "$(Get-TimeStamp) Error while retrieving Pre Windows 2000 Compatibility access group $($error)" | out-file $logfilename -append ; $error.clear() }
 else
 	{
 	if($pre2000grp)
@@ -397,16 +441,16 @@ else
 		if($countpre2000grp -eq 1)
 			{
 			if($pre2000grp.member -eq ('CN=S-1-1-0,CN=ForeignSecurityPrincipals,'+ $root.defaultNamingContext))
-				{ "$(Get-TimeStamp) Member of Pre Windows 2000 Compatibility access group is Everyone" | out-file log-adexport.log -append}
+				{ "$(Get-TimeStamp) Member of Pre Windows 2000 Compatibility access group is Everyone" | out-file $logfilename -append}
 			Elseif($pre2000grp.member -eq ('CN=S-1-5-11,CN=ForeignSecurityPrincipals,'+ $root.defaultNamingContext))
-				{ "$(Get-TimeStamp) Member of Pre Windows 2000 Compatibility access group is Authenticated users" | out-file log-adexport.log -append}
+				{ "$(Get-TimeStamp) Member of Pre Windows 2000 Compatibility access group is Authenticated users" | out-file $logfilename -append}
 			Elseif($pre2000grp.member -eq ('CN=S-1-5-7,CN=ForeignSecurityPrincipals,'+ $root.defaultNamingContext))
-				{ "$(Get-TimeStamp) Member of Pre Windows 2000 Compatibility access group is Anonymous logon" | out-file log-adexport.log -append}
+				{ "$(Get-TimeStamp) Member of Pre Windows 2000 Compatibility access group is Anonymous logon" | out-file $logfilename -append}
 			else
-				{ "$(Get-TimeStamp) Member of Pre Windows 2000 Compatibility access group is $($pre2000grp.member)" | out-file log-adexport.log -append}
+				{ "$(Get-TimeStamp) Member of Pre Windows 2000 Compatibility access group is $($pre2000grp.member)" | out-file $logfilename -append}
 			}
 		else
-		{"$(Get-TimeStamp) Number of Pre Windows 2000 Compatibility access group members: $($countpre2000grp)" | out-file log-adexport.log -append}
+		{"$(Get-TimeStamp) Number of Pre Windows 2000 Compatibility access group members: $($countpre2000grp)" | out-file $logfilename -append}
 		}
 	}
 
@@ -447,9 +491,9 @@ if($dnsadmin)
 		}
 				$countdnsadminsmembers = ($dnsadminsmembers | measure-object).count
 		if($error)
-			{ "$(Get-TimeStamp) Error while retrieving DNSADmins group members $($error)" | out-file log-adexport.log -append ; $error.clear() }
+			{ "$(Get-TimeStamp) Error while retrieving DNSADmins group members $($error)" | out-file $logfilename -append ; $error.clear() }
 		else
-			{"$(Get-TimeStamp) Number of DNSAdmins group members: $($countdnsadminsmembers)" | out-file log-adexport.log -append}
+			{"$(Get-TimeStamp) Number of DNSAdmins group members: $($countdnsadminsmembers)" | out-file $logfilename -append}
 	}
 
 #Grabing Group Policy Creators owners, using SID because name depends on the installation language
@@ -486,9 +530,9 @@ else
 	}
 			$countgpoownersmembers = ($gpoownersmembers | measure-object).count
 	if($error)
-		{ "$(Get-TimeStamp) Error while retrieving GPO owners group members $($error)" | out-file log-adexport.log -append ; $error.clear() }
+		{ "$(Get-TimeStamp) Error while retrieving GPO owners group members $($error)" | out-file $logfilename -append ; $error.clear() }
 	else
-		{"$(Get-TimeStamp) Number of GPO creators ownners group members: $($countgpoownersmembers)" | out-file log-adexport.log -append}
+		{"$(Get-TimeStamp) Number of GPO creators ownners group members: $($countgpoownersmembers)" | out-file $logfilename -append}
 
 #Grabing Cert publishers, using SID because name depends on the installation language
 $certpublishersSID = $domSID + "-517"
@@ -524,9 +568,9 @@ else
 	}
 			$countcertpublishersmembers = ($certpublishersmembers | measure-object).count
 	if($error)
-		{ "$(Get-TimeStamp) Error while retrieving Cert publishers group members $($error)" | out-file log-adexport.log -append ; $error.clear() }
+		{ "$(Get-TimeStamp) Error while retrieving Cert publishers group members $($error)" | out-file $logfilename -append ; $error.clear() }
 	else
-		{"$(Get-TimeStamp) Number of Cert publishers group members: $($countcertpublishersmembers)" | out-file log-adexport.log -append}
+		{"$(Get-TimeStamp) Number of Cert publishers group members: $($countcertpublishersmembers)" | out-file $logfilename -append}
 
 #Retrieving deleted Group Policy Objects
 $DeleteBase = "CN=Deleted Objects," + $root.defaultNamingContext
@@ -549,8 +593,8 @@ if(($error -like '*timeout*') -or ($error -like '*invalid enumeration context*')
 $criticalobjects += $deletedgpo
 $countdeletedgpo = ($deletedgpo  | measure-object).count
 if($error)
-    { "$(Get-TimeStamp) Erreur while retrieving deleted GPOs $($error)" | out-file log-adexport.log -append ; $error.clear() }
-else {"$(Get-TimeStamp) Number of deleted (tombstoned) GPOs: $($countdeletedgpo)" | out-file log-adexport.log -append}
+    { "$(Get-TimeStamp) Erreur while retrieving deleted GPOs $($error)" | out-file $logfilename -append ; $error.clear() }
+else {"$(Get-TimeStamp) Number of deleted (tombstoned) GPOs: $($countdeletedgpo)" | out-file $logfilename -append}
 
 
 
@@ -575,15 +619,15 @@ if($countdeletedusers -ge 3000)
 	{
 	#If number of deleted objects is larger than 3000, metadata retrieval might take a while. As a consequence we sort them by creation date and take only the last 3000 created accounts.
 	$criticalobjects += $deletedusers |  where-object{$_.WhenCreated -ne $null} | Sort-Object -Property whencreated -Descending | select-object -first 3000
-	"$(Get-TimeStamp) Number of deleted (tombstoned) user objects is $($countdeletedusers), because it is larger than 3000 only last 3000 newly created accounts will be retrieved" | out-file log-adexport.log -append
+	"$(Get-TimeStamp) Number of deleted (tombstoned) user objects is $($countdeletedusers), because it is larger than 3000 only last 3000 newly created accounts will be retrieved" | out-file $logfilename -append
 	}
 else
 	{
 	$criticalobjects += $deletedusers
-	"$(Get-TimeStamp) Number of deleted (tombstoned) user objects: $($countdeletedusers)" | out-file log-adexport.log -append
+	"$(Get-TimeStamp) Number of deleted (tombstoned) user objects: $($countdeletedusers)" | out-file $logfilename -append
 	}
 if($error)
-    { "$(Get-TimeStamp) Error while retrieving deleted (tombstoned) user objects $($error)" | out-file log-adexport.log -append ; $error.clear() }
+    { "$(Get-TimeStamp) Error while retrieving deleted (tombstoned) user objects $($error)" | out-file $logfilename -append ; $error.clear() }
 
 
 
@@ -606,8 +650,8 @@ if(($error -like '*timeout*') -or ($error -like '*invalid enumeration context*')
 $criticalobjects += $deleteconf
 $countdeleteconf = ($deleteconf | measure-object).count
 if($error)
-    { "$(Get-TimeStamp) Error while retrieving deleted (tombstoned) objects located in configuration partition $($error)" | out-file log-adexport.log -append ; $error.clear() }
-else {"$(Get-TimeStamp) Number of deleted (tombstoned) objects located in configuration partition: $($countdeleteconf)" | out-file log-adexport.log -append}
+    { "$(Get-TimeStamp) Error while retrieving deleted (tombstoned) objects located in configuration partition $($error)" | out-file $logfilename -append ; $error.clear() }
+else {"$(Get-TimeStamp) Number of deleted (tombstoned) objects located in configuration partition: $($countdeleteconf)" | out-file $logfilename -append}
 
 
 
@@ -632,8 +676,8 @@ if(($error -like '*timeout*') -or ($error -like '*invalid enumeration context*')
 $criticalobjects += $Classesschema
 $countClassesschema = ($Classesschema | measure-object).count
 if($error)
-    { "$(Get-TimeStamp) Error while retrieving classSchema objects $($error)" | out-file log-adexport.log -append ; $error.clear() }
-else {"$(Get-TimeStamp) Number of classSchema objects:  $($countClassesschema)" | out-file log-adexport.log -append}
+    { "$(Get-TimeStamp) Error while retrieving classSchema objects $($error)" | out-file $logfilename -append ; $error.clear() }
+else {"$(Get-TimeStamp) Number of classSchema objects:  $($countClassesschema)" | out-file $logfilename -append}
 
 
 #Retrieving server and ntdsdsa class objects located in the configuration partition (Domain Controllers)
@@ -657,12 +701,12 @@ $countdcrepls = ($dcrepls | measure-object).count
 $countserverd = ($deleteconf | where-object{$_.ObjectClass -eq 'Server'} | measure-object).count
 $countnTDSDSAd = ($deleteconf | where-object{$_.ObjectClass -eq 'nTDSDSA'} | measure-object).count
 if($error)
-    { "$(Get-TimeStamp) Error while retrieving server and ntdsdsa class objects located in the configuration partition and in the tombstone $($error)" | out-file log-adexport.log -append ; $error.clear() }
+    { "$(Get-TimeStamp) Error while retrieving server and ntdsdsa class objects located in the configuration partition and in the tombstone $($error)" | out-file $logfilename -append ; $error.clear() }
 else
 	{
-		"$(Get-TimeStamp) Number of server and ntdsdsa class objects located in the configuration partition: $($countdcrepls)" | out-file log-adexport.log -append
+		"$(Get-TimeStamp) Number of server and ntdsdsa class objects located in the configuration partition: $($countdcrepls)" | out-file $logfilename -append
 		if(($countnTDSDSAd -ge 1) -or ($countserverd -ge 1))
-			{"$(Get-TimeStamp) Domain Controller demotion or use of DCShadow: $($countserverd) deleted server objects and $($countnTDSDSAd) deleted nTDSDSA objects located in the tombstone" | out-file log-adexport.log -append}
+			{"$(Get-TimeStamp) Domain Controller demotion or use of DCShadow: $($countserverd) deleted server objects and $($countnTDSDSAd) deleted nTDSDSA objects located in the tombstone" | out-file $logfilename -append}
 	}
 
 #Domain controller computer objects (existing en deleted)
@@ -684,7 +728,7 @@ if(($error -like '*timeout*') -or ($error -like '*invalid enumeration context*')
 	else{write-output -inputobject "LDAP query failure despite different ResultPageSize, resuming script"}
 	}
 if($error)
-    { "$(Get-TimeStamp) Error while retrieving existing domain controllers in current domain $($error)" | out-file log-adexport.log -append ; $error.clear() }
+    { "$(Get-TimeStamp) Error while retrieving existing domain controllers in current domain $($error)" | out-file $logfilename -append ; $error.clear() }
 $countDCpresents = ($DCpresents | measure-object).count
 $criticalobjects += $DCpresents
 # Deleted domain controllers in current domain (tombstoned)
@@ -704,7 +748,7 @@ if(($error -like '*timeout*') -or ($error -like '*invalid enumeration context*')
 	else{write-output -inputobject "LDAP query failure despite different ResultPageSize, resuming script"}
 	}
 if($error)
-    { "$(Get-TimeStamp) Error while retrieving deleted domain controllers in current domain $($error)" | out-file log-adexport.log -append ; $error.clear() }
+    { "$(Get-TimeStamp) Error while retrieving deleted domain controllers in current domain $($error)" | out-file $logfilename -append ; $error.clear() }
 $countDCeffaces = ($DCeffaces| measure-object).count
 $criticalobjects +=  $DCeffaces
 # Retrieving existing domain controllers outside current domain and inside the current forest
@@ -718,12 +762,12 @@ $otherDCs = $allDCs | where-object{$_.DistinguishedName -notlike "*$($OUDCs)"}
 $countallDCs = ($allDCs | measure-object).count
 $gcobjects += $otherDCs
 if($error)
-    { "$(Get-TimeStamp) Error while retrieving domain controllers in the current forest via GC $($error)" | out-file log-adexport.log -append ; $error.clear() }
+    { "$(Get-TimeStamp) Error while retrieving domain controllers in the current forest via GC $($error)" | out-file $logfilename -append ; $error.clear() }
 else
 	{
-	"$(Get-TimeStamp) Total number of existing domain controllers computer objects in the current forest: $($countallDCs)"  | out-file log-adexport.log -append
-	"$(Get-TimeStamp) Total number of existing domain controllers computer objects in the current domain: $($countDCpresents)"  | out-file log-adexport.log -append
-	"$(Get-TimeStamp) Total number of deleted domain controllers computer objects in the current domain: $($countDCeffaces)"  | out-file log-adexport.log -append
+	"$(Get-TimeStamp) Total number of existing domain controllers computer objects in the current forest: $($countallDCs)"  | out-file $logfilename -append
+	"$(Get-TimeStamp) Total number of existing domain controllers computer objects in the current domain: $($countDCpresents)"  | out-file $logfilename -append
+	"$(Get-TimeStamp) Total number of deleted domain controllers computer objects in the current domain: $($countDCeffaces)"  | out-file $logfilename -append
 	}
 
 
@@ -748,11 +792,11 @@ $delegkrbnoconstrained = $delegkrb | where-object{($_.UserAccountControl -BAND 0
 $countdelegkrbnoconstrained  = ($delegkrbnoconstrained | measure-object).count
 $criticalobjects += $delegkrb
 if($error)
-    { "$(Get-TimeStamp) Error while retrieving objects trusted for Kerberos delegation: $($error)" | out-file log-adexport.log -append ; $error.clear() }
+    { "$(Get-TimeStamp) Error while retrieving objects trusted for Kerberos delegation: $($error)" | out-file $logfilename -append ; $error.clear() }
 else
 	{
-	"$(Get-TimeStamp) Number of objects kerberos delegation setup: $($countdelegkrb) "  | out-file log-adexport.log -append
-	"$(Get-TimeStamp) Number of objects with Kerberos unconstrained delegation configured: $($countdelegkrbnoconstrained) - $($countDCpresents) of them are domain controllers"  | out-file log-adexport.log -append
+	"$(Get-TimeStamp) Number of objects kerberos delegation setup: $($countdelegkrb) "  | out-file $logfilename -append
+	"$(Get-TimeStamp) Number of objects with Kerberos unconstrained delegation configured: $($countdelegkrbnoconstrained) - $($countDCpresents) of them are domain controllers"  | out-file $logfilename -append
 	}
 
 
@@ -760,10 +804,10 @@ else
 $DSInfo = "CN=Directory Service,CN=Windows NT,CN=Services," + $root.configurationNamingContext
 $criticalobjects += Get-ADObject $DSInfo -Server $server -properties *
 if($error)
-    { "$(Get-TimeStamp) Error while retrieving Directory Service Information object information $($error)" | out-file log-adexport.log -append ; $error.clear() }
+    { "$(Get-TimeStamp) Error while retrieving Directory Service Information object information $($error)" | out-file $logfilename -append ; $error.clear() }
 else
 	{
-	"$(Get-TimeStamp) Directory Service Information object retrieved in the configuration partition "  | out-file log-adexport.log -append
+	"$(Get-TimeStamp) Directory Service Information object retrieved in the configuration partition "  | out-file $logfilename -append
 	}
 
 
@@ -772,13 +816,13 @@ $DNSZones = $root.namingcontexts | where-object{$_ -like "*DnsZones,*"} | foreac
 $criticalobjects += $DNSZones
 $countDNSZones = ($DNSZones | measure-object).count
 if($error)
-    { "$(Get-TimeStamp) Error while retrieving DNS zones $($error)" | out-file log-adexport.log -append ; $error.clear() }
-else {"$(Get-TimeStamp) Number of existing and deleted DNS zones: $($countDNSZones)" | out-file log-adexport.log -append}
+    { "$(Get-TimeStamp) Error while retrieving DNS zones $($error)" | out-file $logfilename -append ; $error.clear() }
+else {"$(Get-TimeStamp) Number of existing and deleted DNS zones: $($countDNSZones)" | out-file $logfilename -append}
 
 
-#Group Policy Objects, trusts, DPAPI secrets, AdminSDHolder, domainPolicy, RIDManager under the System container
+#Group Policy Objects, trusts, DPAPI secrets, AdminSDHolder, domainPolicy, RIDManager under the System container, GPO WMI Filters
 $sysroot = "CN=System,"  + ($root.defaultNamingContext)
-$sysobjects =  get-adobject -searchbase $sysroot -SearchScope SubTree -Filter {(ObjectClass -eq "groupPolicyContainer") -or (ObjectClass -eq "trustedDomain") -or (ObjectClass  -eq "rIDManager")  -or (ObjectClass -eq "secret")  -or (ObjectClass -eq "domainPolicy") -or (Name -eq "AdminSDHolder")} -server $server -properties *
+$sysobjects =  get-adobject -searchbase $sysroot -SearchScope SubTree -Filter {(ObjectClass -eq "groupPolicyContainer") -or (ObjectClass -eq "trustedDomain") -or (ObjectClass -eq "msWMI-Som") -or (ObjectClass  -eq "rIDManager")  -or (ObjectClass -eq "secret")  -or (ObjectClass -eq "domainPolicy") -or (Name -eq "AdminSDHolder")} -server $server -properties *
 
 if(($error -like '*timeout*') -or ($error -like '*invalid enumeration context*'))
 	{
@@ -797,18 +841,18 @@ if(($error -like '*timeout*') -or ($error -like '*invalid enumeration context*')
 $criticalobjects += $sysobjects
 $countsysobjects = ($sysobjects | measure-object).count
 if($error)
-    { "$(Get-TimeStamp) Error while retrieving objects under the system container $($error)" | out-file log-adexport.log -append ; $error.clear() }
+    { "$(Get-TimeStamp) Error while retrieving objects under the system container $($error)" | out-file $logfilename -append ; $error.clear() }
 else {
 	$ridmanager = ((($sysobjects | where-object{$_.ObjectClass  -eq "rIDManager"}).fsmoRoleOwner).replace($root.configurationNamingContext,"")).replace("CN=NTDS Settings,","")
-	"$(Get-TimeStamp) Number of objects of interest under the system container (GPOs, domain trusts, DPAPI secrets, AdminSDHolder and domainPolicy): $($countsysobjects)" | out-file log-adexport.log -append
+	"$(Get-TimeStamp) Number of objects of interest under the system container (GPOs, domain trusts, DPAPI secrets, AdminSDHolder, RID Manager, WMI filters and domainPolicy): $($countsysobjects)" | out-file $logfilename -append
 }
 
-$adminSDHolder = $sysobjects | where{($_.Name -eq "AdminSDHolder") -and ($_.ObjectClass -eq "Container")}
+$adminSDHolder = $sysobjects | Where-Object{($_.Name -eq "AdminSDHolder") -and ($_.ObjectClass -eq "Container")}
 if($adminSDHolder)
 	{
 	$accountsACEadminSDHolder = ($adminSDHolder.ntsecuritydescriptor).getaccessrules($true , $true , [System.Security.Principal.SecurityIdentifier]) | Where-Object {$_.IdentityReference -like "S-1-5-21-*"} | group-object -property IdentityReference
 	if($error)
-		{ "$(Get-TimeStamp) Error while retrieving accounts having an ACE on AdminSDHolder object $($error)" | out-file log-adexport.log -append ; $error.clear() }
+		{ "$(Get-TimeStamp) Error while retrieving accounts having an ACE on AdminSDHolder object $($error)" | out-file $logfilename -append ; $error.clear() }
 	else
 		{
 		$usrcount = 0
@@ -830,7 +874,7 @@ if($adminSDHolder)
 				if($userACE){$gcobjects += $userACE}
 				}
 			if($error)
-				{ "$(Get-TimeStamp) Error while getting object SID $($accountACE.Name) with error $($error)" | out-file log-adexport.log -append ; $error.clear() }
+				{ "$(Get-TimeStamp) Error while getting object SID $($accountACE.Name) with error $($error)" | out-file $logfilename -append ; $error.clear() }
 			else
 				{#Check if objectclass is user
 				if(($userACE.ObjectClass -eq "user") -or ($userACE.ObjectClass -eq "inetOrgPerson"))
@@ -840,7 +884,7 @@ if($adminSDHolder)
 			
 			}
 		}
-		 "$(Get-TimeStamp) Number of user accounts having an ACE on AdminSDHolder object: $($usrcount)" | out-file log-adexport.log -append
+		 "$(Get-TimeStamp) Number of user accounts having an ACE on AdminSDHolder object: $($usrcount)" | out-file $logfilename -append
 	}
 
 #Loop through domain trusts and return their state
@@ -849,7 +893,7 @@ $trusts = $sysobjects | where-object{$_.ObjectClass -eq "trustedDomain"}
 if($trusts)
     {
     $counttrusts = ($trusts | measure-object).count
-    "$(Get-TimeStamp) Number of domain trusts: $($counttrusts)" | out-file log-adexport.log -append
+    "$(Get-TimeStamp) Number of domain trusts: $($counttrusts)" | out-file $logfilename -append
 
     foreach($trust in $trusts)
 	    {
@@ -886,14 +930,14 @@ if($trusts)
 		    {
 		    $dir = "disabled"
 		    }
-		"$(Get-TimeStamp) The domain trust with $($trust.name) is $($type) and $($dir) , SID filtering is $($sidfilt)" | out-file log-adexport.log -append
+		"$(Get-TimeStamp) The domain trust with $($trust.name) is $($type) and $($dir) , SID filtering is $($sidfilt)" | out-file $logfilename -append
 	    }
     }
 else
-    { "$(Get-TimeStamp) No domain trusts to process" | out-file log-adexport.log -append }
+    { "$(Get-TimeStamp) No domain trusts to process" | out-file $logfilename -append }
 
 if($error)
-    { "$(Get-TimeStamp) Error while retrieving domain trusts $($error)" | out-file log-adexport.log -append ; $error.clear() }
+    { "$(Get-TimeStamp) Error while retrieving domain trusts $($error)" | out-file $logfilename -append ; $error.clear() }
 
 # Get all domain trusts of each domain in the forest through global catalog
 $ContSys = "CN=System," + $root.defaultNamingContext
@@ -910,8 +954,8 @@ if($allTrustsquery)
 	$countallTrusts = ($allTrusts | group-object -property TrustPartner | measure-object).count
 	$gcobjects += $otherTrusts
 	if($error)
-		{ "$(Get-TimeStamp) Error while retrieving domain trusts of each domain in the forest through GC $($error)" | out-file log-adexport.log -append ; $error.clear() }
-	else {"$(Get-TimeStamp) Number of trust partners in the forest: $($countallTrusts)" | out-file log-adexport.log -append}
+		{ "$(Get-TimeStamp) Error while retrieving domain trusts of each domain in the forest through GC $($error)" | out-file $logfilename -append ; $error.clear() }
+	else {"$(Get-TimeStamp) Number of trust partners in the forest: $($countallTrusts)" | out-file $logfilename -append}
 	}
 
 # Get all domain roots in the forest through global catalog
@@ -925,8 +969,8 @@ $otherdomains = $alldomains | where-object{$_.DistinguishedName -ne $root.Defaul
 $gcobjects += $otherdomains
 $countallDomains = ($alldomains  | measure-object).count
 	if($error)
-		{ "$(Get-TimeStamp) Error while retrieving forest domain roots through GC $($error)" | out-file log-adexport.log -append ; $error.clear() }
-	else {"$(Get-TimeStamp) Number of domain roots located in the forest: $($countallDomains)" | out-file log-adexport.log -append}
+		{ "$(Get-TimeStamp) Error while retrieving forest domain roots through GC $($error)" | out-file $logfilename -append ; $error.clear() }
+	else {"$(Get-TimeStamp) Number of domain roots located in the forest: $($countallDomains)" | out-file $logfilename -append}
 
 # Processing SID History accounts
 # Get all accounts with SIDHistory present in the forest, limit properties loaded (DN,SID,SIDHistory) for performance
@@ -938,19 +982,19 @@ $search.PropertiesToLoad.Addrange(('DistinguishedName','SIDHistory','objectSID')
 $allSIDHistory  = $search.findall() | Convert-ADSearchResult
 $countSIDHistory = ($allSIDHistory | measure-object).count
 if($error)
-    { "$(Get-TimeStamp) Error while retrieving accounts with SID History through GC $($error)" | out-file log-adexport.log -append ; $error.clear() }
-else {"$(Get-TimeStamp) Number of accounts with SIDHistory in the forest: $($countSIDHistory)" | out-file log-adexport.log -append}
+    { "$(Get-TimeStamp) Error while retrieving accounts with SID History through GC $($error)" | out-file $logfilename -append ; $error.clear() }
+else {"$(Get-TimeStamp) Number of accounts with SIDHistory in the forest: $($countSIDHistory)" | out-file $logfilename -append}
 
 #Get accounts in the current domain with a suspicious SIDHistory: Meaning with a SIDHistory of its own domain or a well known SID with high privileges
 $CurrDomainSIDHistory = $allSIDHistory | where-object {($_.objectSID -like "$domSID*") -and (($_.SIDHistory -like "*$domSID*") -or ($_.SIDHistory -like "*-500") -or ($_.SIDHistory -eq "S-1-5-32-548") -or ($_.SIDHistory -eq "S-1-5-32-544") -or ($_.SIDHistory -eq "S-1-5-32-551") -or ($_.SIDHistory -like "*-512") -or ($_.SIDHistory -like "*-516") -or ($_.SIDHistory -like "*-519") -or ($_.SIDHistory -eq "S-1-5-32-550") -or ($_.SIDHistory -like "*-498") -or ($_.SIDHistory -like "*-518")  -or ($_.SIDHistory -eq "S-1-5-32-549"))}
 if($CurrDomainSIDHistory)
 	{
 	$NbCurrDomainSIDHistory = ($CurrDomainSIDHistory | measure-object).count
-	 "$(Get-TimeStamp) Number of accounts with a suspicious SIDHistory in the current domain: $($NbCurrDomainSIDHistory)" | out-file log-adexport.log -append
+	 "$(Get-TimeStamp) Number of accounts with a suspicious SIDHistory in the current domain: $($NbCurrDomainSIDHistory)" | out-file $logfilename -append
 	 foreach($objSIDH in $CurrDomainSIDHistory)
 		{
 		$criticalobjects += get-adobject $objSIDH.DistinguishedName -Server $server -properties *
-		if($error){ "$(Get-TimeStamp) Error while retrieving accounts with a suspicious SIDHistory in the current domain $($error)" | out-file log-adexport.log -append ; $error.clear() }
+		if($error){ "$(Get-TimeStamp) Error while retrieving accounts with a suspicious SIDHistory in the current domain $($error)" | out-file $logfilename -append ; $error.clear() }
 		}
 	}
 
@@ -964,7 +1008,7 @@ if($OtherDomainSIDHistory)
 	$NbOtherDomainSIDHistory = ($OtherDomainSIDHistory | measure-object).count
 	$search = new-object System.DirectoryServices.DirectorySearcher
 	$search.searchroot = [ADSI]"GC://$($gc)"
-	"$(Get-TimeStamp) Number of accounts in other domains within the forest which have an SIDHistory belonging to the current domain $($NbOtherDomainSIDHistory)" | out-file log-adexport.log -append
+	"$(Get-TimeStamp) Number of accounts in other domains within the forest which have an SIDHistory belonging to the current domain $($NbOtherDomainSIDHistory)" | out-file $logfilename -append
 	# Foreach account in other domains within the forest which have an SIDHistory belonging to the current domain we compare its SIDHistory with SIDs of accounts protected in the current domain by SDProp. If there is a match that could be suspicious.
 	foreach($objSIDH in $OtherDomainSIDHistory)
 			{
@@ -977,13 +1021,13 @@ if($OtherDomainSIDHistory)
 					$DangerOtherDomainSIDHistory += $search.findone() | Convert-ADSearchResult
 					}
 				}
-			if($error){ "$(Get-TimeStamp) Error while retrieving accounts in other domains within the forest which have an SIDHistory belonging to the current domain $($error)" | out-file log-adexport.log -append ; $error.clear() }
+			if($error){ "$(Get-TimeStamp) Error while retrieving accounts in other domains within the forest which have an SIDHistory belonging to the current domain $($error)" | out-file $logfilename -append ; $error.clear() }
 
 			}
 	if($DangerOtherDomainSIDHistory)
 		{
 		$nbDangerOtherDomainSIDHistory = ($DangerOtherDomainSIDHistory | measure-object).count
-		"$(Get-TimeStamp) Number of accounts in the forest with a suspicious SIDHistory value matching the current domain: $($nbDangerOtherDomainSIDHistory)" | out-file log-adexport.log -append
+		"$(Get-TimeStamp) Number of accounts in the forest with a suspicious SIDHistory value matching the current domain: $($nbDangerOtherDomainSIDHistory)" | out-file $logfilename -append
 		$gcobjects += $DangerOtherDomainSIDHistory
 		}
 	}
@@ -1008,14 +1052,14 @@ if(($error -like '*timeout*') -or ($error -like '*invalid enumeration context*')
 	else{write-output -inputobject "LDAP query failure despite different ResultPageSize, resuming script"}
 	}
 if($error)
-    	{ "$(Get-TimeStamp) Error while retrieving OUs $($error)" | out-file log-adexport.log -append ; $error.clear() }
+    	{ "$(Get-TimeStamp) Error while retrieving OUs $($error)" | out-file $logfilename -append ; $error.clear() }
 else
 	{
 	$countobjOUs = ($objOUs | measure-object).count
 	#If there is more than 1000 OUs we take only the level 1 + level 2 OUs and load all properties
 	if($countobjOUs -ge 1000)
 		{
-		"$(Get-TimeStamp) Total number of OUs: $($countobjOUs), only level 1 and 2 OUs will be processed" | out-file log-adexport.log -append
+		"$(Get-TimeStamp) Total number of OUs: $($countobjOUs), only level 1 and 2 OUs will be processed" | out-file $logfilename -append
 		$OULevel1 = Get-ADObject -SearchBase ($root.defaultNamingContext) -SearchScope OneLevel -Server $server  -filter {ObjectClass -eq "organizationalUnit"} -properties *
 		if(($error -like '*timeout*') -or ($error -like '*invalid enumeration context*'))
 			{
@@ -1034,7 +1078,7 @@ else
 		$totalOU = ($OULevel1 | measure-object).count
 		$criticalobjects += $OULevel1
 		if($error)
-    			{ "$(Get-TimeStamp) Error while retrieving level 1 OUs $($error)" | out-file log-adexport.log -append ; $error.clear() }
+    			{ "$(Get-TimeStamp) Error while retrieving level 1 OUs $($error)" | out-file $logfilename -append ; $error.clear() }
 		foreach($OU in $OULevel1)
 			{
 			$OULevel2 = Get-ADObject -SearchBase ($OU.DistinguishedName) -SearchScope OneLevel -Server $server  -filter {ObjectClass -eq "organizationalUnit"} -properties *
@@ -1056,15 +1100,15 @@ else
 			$totalOU = $totalOU + ($OULevel2 | measure-object).count
 			$criticalobjects += $OULevel2
 			if($error)
-    				{ "$(Get-TimeStamp) Error while retrieving level 2 OUs $($error)" | out-file log-adexport.log -append ; $error.clear() }
+    				{ "$(Get-TimeStamp) Error while retrieving level 2 OUs $($error)" | out-file $logfilename -append ; $error.clear() }
 			}
 
-		"$(Get-TimeStamp) Total number of OUs processed: $($totalOU)" | out-file log-adexport.log -append
+		"$(Get-TimeStamp) Total number of OUs processed: $($totalOU)" | out-file $logfilename -append
 		}
 	else
 		{
 		#Less than 1000 OUs we process every OU and load all properties
-		"$(Get-TimeStamp) Total number of OUs: $($countobjOUs)" | out-file log-adexport.log -append
+		"$(Get-TimeStamp) Total number of OUs: $($countobjOUs)" | out-file $logfilename -append
 		$objOUsfull = Get-ADObject  -SearchBase ($root.defaultNamingContext) -SearchScope SubTree -Filter {ObjectClass -eq "organizationalUnit"}  -Server $server -Properties *
 		if(($error -like '*timeout*') -or ($error -like '*invalid enumeration context*'))
 			{
@@ -1082,7 +1126,7 @@ else
 			}
 		$criticalobjects += $objOUsfull
 		if($error)
-    			{ "$(Get-TimeStamp) Error while retrieving OUs $($error)" | out-file log-adexport.log -append ; $error.clear() }
+    			{ "$(Get-TimeStamp) Error while retrieving OUs $($error)" | out-file $logfilename -append ; $error.clear() }
 		}
 	}
 
@@ -1108,10 +1152,10 @@ $countADreplsites = ($sitesIGC | where-object{$_.ObjectClass -eq "site"} |  meas
 $countADIGC = ($sitesIGC | where-object{$_.ObjectClass -eq "CertificationAuthority"} |  measure-object).count
 
 if($error)
-    { "$(Get-TimeStamp) Error while retrieving AD replication sites and CertificationAuthority objects $($error)" | out-file log-adexport.log -append ; $error.clear() }
+    { "$(Get-TimeStamp) Error while retrieving AD replication sites and CertificationAuthority objects $($error)" | out-file $logfilename -append ; $error.clear() }
 else {
-	"$(Get-TimeStamp) Number of AD replication sites in the configuration partition: $($countADreplsites)" | out-file log-adexport.log -append
-	"$(Get-TimeStamp) Number of CertificationAuthority objects in the configuration partition: $($countADIGC)" | out-file log-adexport.log -append
+	"$(Get-TimeStamp) Number of AD replication sites in the configuration partition: $($countADreplsites)" | out-file $logfilename -append
+	"$(Get-TimeStamp) Number of CertificationAuthority objects in the configuration partition: $($countADIGC)" | out-file $logfilename -append
 	$crossrefcontainer = $sitesIGC | where-object{($_.Name -eq "Partitions") -and ($_.ObjectClass -eq "crossRefContainer")}
 	$DomainNamingMaster = (($crossrefcontainer.fsmoRoleOwner).replace($root.configurationNamingContext,"")).replace("CN=NTDS Settings,","")
 	}
@@ -1119,21 +1163,21 @@ else {
 
 # Displayin FSMO role olders and FFL + DFL
 if($PDCe)
-	{ "$(Get-TimeStamp) PDCe for the domain is: $($PDCe)" | out-file log-adexport.log -append}
+	{ "$(Get-TimeStamp) PDCe for the domain is: $($PDCe)" | out-file $logfilename -append}
 if($inframaster)
-	{ "$(Get-TimeStamp) Infrastructure master for the domain is: $($inframaster)" | out-file log-adexport.log -append}
+	{ "$(Get-TimeStamp) Infrastructure master for the domain is: $($inframaster)" | out-file $logfilename -append}
 if($ridmanager)
-	{ "$(Get-TimeStamp) RID Manager for the domain is: $($ridmanager)" | out-file log-adexport.log -append}
+	{ "$(Get-TimeStamp) RID Manager for the domain is: $($ridmanager)" | out-file $logfilename -append}
 if($DomainNamingMaster)
-	{ "$(Get-TimeStamp) Domain naming master for the forest is: $($DomainNamingMaster)" | out-file log-adexport.log -append}
+	{ "$(Get-TimeStamp) Domain naming master for the forest is: $($DomainNamingMaster)" | out-file $logfilename -append}
 if($SchemaMaster)
-	{ "$(Get-TimeStamp) Schema master for the forest is: $($SchemaMaster)" | out-file log-adexport.log -append}
+	{ "$(Get-TimeStamp) Schema master for the forest is: $($SchemaMaster)" | out-file $logfilename -append}
 if($crossrefcontainer)
-	{ "$(Get-TimeStamp) Forest functional level is: $($crossrefcontainer."msDS-Behavior-Version")" | out-file log-adexport.log -append}
+	{ "$(Get-TimeStamp) Forest functional level is: $($crossrefcontainer."msDS-Behavior-Version")" | out-file $logfilename -append}
 $refdomains = $sitesIGC | where-object{($_.Objectclass -eq "crossRef") -and ($_.SystemFlags -eq 3)}
 if($refdomains)
 	{
-	foreach($refdomain in $refdomains){ "$(Get-TimeStamp) $($refdomain.dnsRoot) domain functional level is $($refdomain."msDS-Behavior-Version")" | out-file log-adexport.log -append}
+	foreach($refdomain in $refdomains){ "$(Get-TimeStamp) $($refdomain.dnsRoot) domain functional level is $($refdomain."msDS-Behavior-Version")" | out-file $logfilename -append}
 	}
 
 #Find user accounts sensitive to Kerberoast attack (Service Principal Name not null)
@@ -1157,12 +1201,12 @@ $criticalobjects += $kerberoast
 $kerberoastcount = ($kerberoast | where-object{($_.Name -ne "krbtgt")} | measure-object).count
 $kerberoastadmcount = ($kerberoast | where-object{($_.Name -ne "krbtgt") -and ($_.Admincount -eq 1)} | measure-object).count
 if($error)
-    { "$(Get-TimeStamp) Error while retrieving kerberoastable accounts  $($error)" | out-file log-adexport.log -append ; $error.clear() }
+    { "$(Get-TimeStamp) Error while retrieving kerberoastable accounts  $($error)" | out-file $logfilename -append ; $error.clear() }
 else
 	{
-		"$(Get-TimeStamp) Number of kerberoastable accounts: $($kerberoastcount)" | out-file log-adexport.log -append
+		"$(Get-TimeStamp) Number of kerberoastable accounts: $($kerberoastcount)" | out-file $logfilename -append
 		if($kerberoastadmcount -ge 1)
-			{"$(Get-TimeStamp) Number of kerberoastable accounts protected by SDProp: $($kerberoastadmcount)" | out-file log-adexport.log -append}
+			{"$(Get-TimeStamp) Number of kerberoastable accounts protected by SDProp: $($kerberoastadmcount)" | out-file $logfilename -append}
 	}
 
 #Find user accounts sensitive to AS-REP roast attack
@@ -1185,12 +1229,12 @@ $criticalobjects += $asreproast
 $asreproastcount = ($asreproast | measure-object).count
 $asreproastadmcount = ($asreproast | where-object {($_.Admincount -eq 1)} | measure-object).count
 if($error)
-    { "$(Get-TimeStamp) Error while retrieving AS-Rep roastables accounts  $($error)" | out-file log-adexport.log -append ; $error.clear() }
+    { "$(Get-TimeStamp) Error while retrieving AS-Rep roastables accounts  $($error)" | out-file $logfilename -append ; $error.clear() }
 else
 	{
-		"$(Get-TimeStamp) Number of AS-Rep roastables accounts: $($asreproastcount)" | out-file log-adexport.log -append
+		"$(Get-TimeStamp) Number of AS-Rep roastables accounts: $($asreproastcount)" | out-file $logfilename -append
 		if($asreproastadmcount -ge 1)
-			{"$(Get-TimeStamp) Number of AS-Rep roastable accounts protected by SDProp: $($asreproastadmcount)" | out-file log-adexport.log -append}
+			{"$(Get-TimeStamp) Number of AS-Rep roastable accounts protected by SDProp: $($asreproastadmcount)" | out-file $logfilename -append}
 	}
 
 
@@ -1214,8 +1258,8 @@ if(($error -like '*timeout*') -or ($error -like '*invalid enumeration context*')
 $criticalobjects +=  $extrights
 $countextrights = ($extrights | measure-object).count
 if($error)
-    { "$(Get-TimeStamp) Error while retrieving extended rights $($error)" | out-file log-adexport.log -append ; $error.clear() }
-else {"$(Get-TimeStamp) Number of extended rights: $($countextrights)" | out-file log-adexport.log -append}
+    { "$(Get-TimeStamp) Error while retrieving extended rights $($error)" | out-file $logfilename -append ; $error.clear() }
+else {"$(Get-TimeStamp) Number of extended rights: $($countextrights)" | out-file $logfilename -append}
 
 
 # Get schema attributes with Searchflags marked as confidential
@@ -1237,20 +1281,20 @@ if(($error -like '*timeout*') -or ($error -like '*invalid enumeration context*')
 $criticalobjects +=  $confidattr
 $countconfidattr = ($confidattr | measure-object).count
 if($error)
-    { "$(Get-TimeStamp) Error while retrieving schema attributes marked as confidential $($error)" | out-file log-adexport.log -append ; $error.clear() }
+    { "$(Get-TimeStamp) Error while retrieving schema attributes marked as confidential $($error)" | out-file $logfilename -append ; $error.clear() }
 else
 	{
-	"$(Get-TimeStamp) Number of schema attributes marked as confidential: $($countconfidattr)" | out-file log-adexport.log -append
+	"$(Get-TimeStamp) Number of schema attributes marked as confidential: $($countconfidattr)" | out-file $logfilename -append
 	$laps = $confidattr | where-object{$_.Name -eq "ms-Mcs-AdmPwd"}
 	if($laps)
-		{"$(Get-TimeStamp) LAPS is setup in this forest and ms-Mcs-AdmPwd is marked as confidential" | out-file log-adexport.log -append}
+		{"$(Get-TimeStamp) LAPS is setup in this forest and ms-Mcs-AdmPwd is marked as confidential" | out-file $logfilename -append}
 	else
-		{"$(Get-TimeStamp) LAPS is not setup in the forest or ms-Mcs-AdmPwd is not marked as confidential" | out-file log-adexport.log -append}
+		{"$(Get-TimeStamp) LAPS is not setup in the forest or ms-Mcs-AdmPwd is not marked as confidential" | out-file $logfilename -append}
 	$bitlocker = $confidattr | where-object{$_.Name -eq "ms-FVE-RecoveryPassword"}
 	if($bitlocker)
-		{"$(Get-TimeStamp) Bitlocker recovery key attribute is marked as confidential" | out-file log-adexport.log -append}
+		{"$(Get-TimeStamp) Bitlocker recovery key attribute is marked as confidential" | out-file $logfilename -append}
 	else
-		{"$(Get-TimeStamp) Bitlocker recovery key attribute is not marked as confidential" | out-file log-adexport.log -append}
+		{"$(Get-TimeStamp) Bitlocker recovery key attribute is not marked as confidential" | out-file $logfilename -append}
 	}
 
 
@@ -1273,19 +1317,19 @@ if(($error -like '*timeout*') -or ($error -like '*invalid enumeration context*')
 $criticalobjects +=  $neveraudit
 $countneveraudit = ($neveraudit | measure-object).count
 if($error)
-    { "$(Get-TimeStamp) Error while retrieving schema attributes marked as never to audit $($error)" | out-file log-adexport.log -append ; $error.clear() }
-else {"$(Get-TimeStamp) Number of schema attributes marked as never to audit: $($countneveraudit)" | out-file log-adexport.log -append}
+    { "$(Get-TimeStamp) Error while retrieving schema attributes marked as never to audit $($error)" | out-file $logfilename -append ; $error.clear() }
+else {"$(Get-TimeStamp) Number of schema attributes marked as never to audit: $($countneveraudit)" | out-file $logfilename -append}
 
 
 
 #Check if current domain is root or child domain. if child domain get domain, enterprise, schema admins of root domain
 if($root.rootDomainNamingContext -eq $root.DefaultNamingContext)
 	{
-	"$(Get-TimeStamp) Current domain is the root domain" | out-file log-adexport.log -append
+	"$(Get-TimeStamp) Current domain is the root domain" | out-file $logfilename -append
 	}
 Else
 	{
-	"$(Get-TimeStamp) Current domain is a child domain" | out-file log-adexport.log -append
+	"$(Get-TimeStamp) Current domain is a child domain" | out-file $logfilename -append
 	$search = new-object System.DirectoryServices.DirectorySearcher
 	$search.searchroot = [ADSI]"GC://$($gc)/$($root.rootDomainNamingContext)"
 	$search.searchscope = "Base"
@@ -1303,9 +1347,9 @@ Else
 	$rootda = $search.Findone() | Convert-ADSearchResult
 	$gcobjects += $rootda
 	if($error)
-			{ "$(Get-TimeStamp) Error while retrieving domain admins group in root domain $($error)" | out-file log-adexport.log -append ; $error.clear() }
+			{ "$(Get-TimeStamp) Error while retrieving domain admins group in root domain $($error)" | out-file $logfilename -append ; $error.clear() }
 	else
-			{"$(Get-TimeStamp) Domain admins group sucessfully retrieved in root domain" | out-file log-adexport.log -append}
+			{"$(Get-TimeStamp) Domain admins group sucessfully retrieved in root domain" | out-file $logfilename -append}
 	#Retrieving the schema and enterprise admins groups which are universal: we can retrieve members via GC
 	$search.filter = "(|(ObjectSID=$($rootEntadmSID))(ObjectSID=$($rootSchemaSID)))"
 	$rootUadmins = $search.FindAll() | Convert-ADSearchResult
@@ -1320,9 +1364,9 @@ Else
 		$gcobjects += $rootadminsmembers
 		}
 		if($error)
-			{ "$(Get-TimeStamp) Error while retrieving enterprise and schema admins members located in the root domain $($error)" | out-file log-adexport.log -append ; $error.clear() }
+			{ "$(Get-TimeStamp) Error while retrieving enterprise and schema admins members located in the root domain $($error)" | out-file $logfilename -append ; $error.clear() }
 				else
-			{"$(Get-TimeStamp) Number of level 1 enterprise and schema admins members located in the root domain: $($countrootadminsmembers)" | out-file log-adexport.log -append}
+			{"$(Get-TimeStamp) Number of level 1 enterprise and schema admins members located in the root domain: $($countrootadminsmembers)" | out-file $logfilename -append}
 	}
 
 
@@ -1336,7 +1380,7 @@ if($root.rootDomainNamingContext -eq $root.DefaultNamingContext)
 	$ADFS = "CN=ADFS,CN=Microsoft,CN=Program Data," + ($root.DefaultNamingContext)
 	$IsADFS = [ADSI]::Exists("GC://$($gc)/$($ADFS)")
 	if($error)
-		{ "$(Get-TimeStamp) Error while testing existance of ADFS objects $($error)" | out-file log-adexport.log -append ; $error.clear() }
+		{ "$(Get-TimeStamp) Error while testing existance of ADFS objects $($error)" | out-file $logfilename -append ; $error.clear() }
 	if($IsADFS -eq $true)
 		{
 		#Current domain is root domain using LDAP to retrieve ADFS Objects	
@@ -1357,12 +1401,12 @@ if($root.rootDomainNamingContext -eq $root.DefaultNamingContext)
 			else{write-output -inputobject "LDAP query failure despite different ResultPageSize, resuming script"}
 			}
 		$criticalobjects +=  $ADFSObjects
-		$ADFSFarms = $ADFSObjects | where{($_.ObjectClass -eq "Container") -and ($_.Name -ne "ADFS")}
-		$ADFSrootobj = $ADFSObjects | where{($_.ObjectClass -eq "Container") -and ($_.Name -eq "ADFS")}
+		$ADFSFarms = $ADFSObjects | Where-Object{($_.ObjectClass -eq "Container") -and ($_.Name -ne "ADFS")}
+		$ADFSrootobj = $ADFSObjects | Where-Object{($_.ObjectClass -eq "Container") -and ($_.Name -eq "ADFS")}
 		$countADFSFarms = ( $ADFSFarms | measure-object).count
 		if($error)
-			{ "$(Get-TimeStamp) Error while retrieving ADFS Objects $($error)" | out-file log-adexport.log -append ; $error.clear() }
-		else {"$(Get-TimeStamp) Number of ADFS farms (containers) in the current domain: $($countADFSFarms)" | out-file log-adexport.log -append}
+			{ "$(Get-TimeStamp) Error while retrieving ADFS Objects $($error)" | out-file $logfilename -append ; $error.clear() }
+		else {"$(Get-TimeStamp) Number of ADFS farms (containers) in the current domain: $($countADFSFarms)" | out-file $logfilename -append}
 		
 		# If ADFS farms are found searching for service accounts running ADFS, ACE is present on objects storing DKM information
 		if($ADFSFarms -and $ADFSrootobj)
@@ -1374,7 +1418,7 @@ if($root.rootDomainNamingContext -eq $root.DefaultNamingContext)
 				$accountsACEADFSFarm = ($ADFSFarm.ntsecuritydescriptor).getaccessrules($true , $true , [System.Security.Principal.SecurityIdentifier]) | Where-Object {$_.IdentityReference -like "S-1-5-21-*"} | group-object -property IdentityReference
 				$compareACEfarmroot = compare-object $accountsACEADFSFarm $accountsACEADFSRoot -Property Name
 				if($error)
-					{ "$(Get-TimeStamp) Error while retrieving accounts having an ACE on ADFS Farm object $($error)" | out-file log-adexport.log -append ; $error.clear() }
+					{ "$(Get-TimeStamp) Error while retrieving accounts having an ACE on ADFS Farm object $($error)" | out-file $logfilename -append ; $error.clear() }
 				else
 					{
 					$userACE = $null
@@ -1398,7 +1442,7 @@ if($root.rootDomainNamingContext -eq $root.DefaultNamingContext)
 							if($userACE){$gcobjects += $userACE}
 							}
 						if($error)
-							{ "$(Get-TimeStamp) Error while getting object SID $($accountACE.Name) with error $($error)" | out-file log-adexport.log -append ; $error.clear() }
+							{ "$(Get-TimeStamp) Error while getting object SID $($accountACE.Name) with error $($error)" | out-file $logfilename -append ; $error.clear() }
 					
 						}
 					}
@@ -1418,7 +1462,7 @@ else
 	$ADFScurrent = "CN=ADFS,CN=Microsoft,CN=Program Data," + ($root.DefaultNamingContext)
 	$IsADFScurrent = [ADSI]::Exists("GC://$($gc)/$($ADFScurrent)")
 	if($error)
-		{ "$(Get-TimeStamp) Error while testing existance of ADFS objects $($error)" | out-file log-adexport.log -append ; $error.clear() }
+		{ "$(Get-TimeStamp) Error while testing existance of ADFS objects $($error)" | out-file $logfilename -append ; $error.clear() }
 	if($IsADFSroot -eq $true)
 		{
 		$search = new-object System.DirectoryServices.DirectorySearcher
@@ -1427,11 +1471,11 @@ else
 		$search.filter = "(ObjectClass=*)"
 		$ADFSObjects = $search.FindAll() | Convert-ADSearchResult
 		$gcobjects +=  $ADFSObjects
-		$ADFSFarms = $ADFSObjects | where{($_.ObjectClass -eq "Container") -and ($_.Name -ne "ADFS")}
+		$ADFSFarms = $ADFSObjects | Where-Object{($_.ObjectClass -eq "Container") -and ($_.Name -ne "ADFS")}
 		$countADFSFarms = ( $ADFSFarms | measure-object).count
 		if($error)
-			{ "$(Get-TimeStamp) Error while retrieving ADFS Objects $($error)" | out-file log-adexport.log -append ; $error.clear() }
-		else {"$(Get-TimeStamp) Number of ADFS farms (containers) in the root domain: $($countADFSFarms)" | out-file log-adexport.log -append}
+			{ "$(Get-TimeStamp) Error while retrieving ADFS Objects $($error)" | out-file $logfilename -append ; $error.clear() }
+		else {"$(Get-TimeStamp) Number of ADFS farms (containers) in the root domain: $($countADFSFarms)" | out-file $logfilename -append}
 		}
 	if($IsADFScurrent -eq $true)
 		{
@@ -1451,12 +1495,12 @@ else
 			else{write-output -inputobject "LDAP query failure despite different ResultPageSize, resuming script"}
 			}
 		$criticalobjects +=  $ADFSObjects
-		$ADFSFarms = $ADFSObjects | where{($_.ObjectClass -eq "Container") -and ($_.Name -ne "ADFS")}
-		$ADFSrootobj = $ADFSObjects | where{($_.ObjectClass -eq "Container") -and ($_.Name -eq "ADFS")}
+		$ADFSFarms = $ADFSObjects | Where-Object{($_.ObjectClass -eq "Container") -and ($_.Name -ne "ADFS")}
+		$ADFSrootobj = $ADFSObjects | Where-Object{($_.ObjectClass -eq "Container") -and ($_.Name -eq "ADFS")}
 		$countADFSFarms = ( $ADFSFarms | measure-object).count
 		if($error)
-			{ "$(Get-TimeStamp) Error while retrieving ADFS Objects $($error)" | out-file log-adexport.log -append ; $error.clear() }
-		else {"$(Get-TimeStamp) Number of ADFS farms (containers) in the current domain: $($countADFSFarms)" | out-file log-adexport.log -append}
+			{ "$(Get-TimeStamp) Error while retrieving ADFS Objects $($error)" | out-file $logfilename -append ; $error.clear() }
+		else {"$(Get-TimeStamp) Number of ADFS farms (containers) in the current domain: $($countADFSFarms)" | out-file $logfilename -append}
 	
 		# If ADFS farms are found searching for service accounts running ADFS, ACE is present on objects storing DKM information
 		if($ADFSFarms -and $ADFSrootobj)
@@ -1468,7 +1512,7 @@ else
 				$accountsACEADFSFarm = ($ADFSFarm.ntsecuritydescriptor).getaccessrules($true , $true , [System.Security.Principal.SecurityIdentifier]) | Where-Object {$_.IdentityReference -like "S-1-5-21-*"} | group-object -property IdentityReference
 				$compareACEfarmroot = compare-object $accountsACEADFSFarm $accountsACEADFSRoot -Property Name
 				if($error)
-					{ "$(Get-TimeStamp) Error while retrieving accounts having an ACE on ADFS Farm object $($error)" | out-file log-adexport.log -append ; $error.clear() }
+					{ "$(Get-TimeStamp) Error while retrieving accounts having an ACE on ADFS Farm object $($error)" | out-file $logfilename -append ; $error.clear() }
 				else
 					{
 					$userACE = $null
@@ -1492,7 +1536,7 @@ else
 							if($userACE){$gcobjects += $userACE}
 							}
 						if($error)
-							{ "$(Get-TimeStamp) Error while getting object SID $($accountACE.Name) with error $($error)" | out-file log-adexport.log -append ; $error.clear() }
+							{ "$(Get-TimeStamp) Error while getting object SID $($accountACE.Name) with error $($error)" | out-file $logfilename -append ; $error.clear() }
 				
 						}
 					}
@@ -1526,8 +1570,8 @@ if(($IsADFS -eq $true) -or ($IsADFSroot -eq $true) -or ($IsADFScurrent -eq $true
 			$criticalobjects +=  $ADFSDeviceregObjects
 			$countADFSDeviceregObjects = ( $ADFSDeviceregObjects | measure-object).count
 			if($error)
-				{ "$(Get-TimeStamp) Error while retrieving ADFS device registration objects $($error)" | out-file log-adexport.log -append ; $error.clear() }
-			else {"$(Get-TimeStamp) Number of ADFS device registration objects: $($countADFSDeviceregObjects)" | out-file log-adexport.log -append}
+				{ "$(Get-TimeStamp) Error while retrieving ADFS device registration objects $($error)" | out-file $logfilename -append ; $error.clear() }
+			else {"$(Get-TimeStamp) Number of ADFS device registration objects: $($countADFSDeviceregObjects)" | out-file $logfilename -append}
 		}
 	}
 
@@ -1538,24 +1582,30 @@ $ISets = [ADSI]::Exists("GC://$($gc)/$($trustedSubSystem)")
 $serviceNC = "CN=Services," + ($root.configurationNamingContext)
 $RBAC = $null
 if($error)
-    { "$(Get-TimeStamp) Error while retrieving Exchange trusted subsystem  object $($error)" | out-file log-adexport.log -append ; $error.clear() }
+    { "$(Get-TimeStamp) Error while retrieving Exchange trusted subsystem  object $($error)" | out-file $logfilename -append ; $error.clear() }
 
 if($ISets -eq $true)
-#Exchange is installed
 	{
+	$exchschemaverpath = "CN=ms-Exch-Schema-Version-Pt," + ($root.schemaNamingContext)
+	$exchschemaver = get-adobject $exchschemaverpath -server $server -properties *
+	$criticalobjects += $exchschemaver
+	if($error)
+		{ "$(Get-TimeStamp) Error while retrieving Exchange schema version $($error)" | out-file $logfilename -append ; $error.clear() }
+	else {"$(Get-TimeStamp) Exchange schema version is: $($exchschemaver.rangeUpper)" | out-file $logfilename -append}
+	
 	if($root.rootDomainNamingContext -eq $root.DefaultNamingContext)
 		{
 		# If current domain is root domain, we do not need GC to retrieve Exchange objects information.
 		$ets = get-adobject $trustedSubSystem -server $server -properties *
 		$criticalobjects += $ets
-		"$(Get-TimeStamp) Retrieving Exchange Trusted Subsytem, Exchange servers and Exchange Windows Permissions groups" | out-file log-adexport.log -append
+		"$(Get-TimeStamp) Retrieving Exchange Trusted Subsytem, Exchange servers and Exchange Windows Permissions groups" | out-file $logfilename -append
 		$Winperm = "CN=Exchange Windows Permissions,OU=Microsoft Exchange Security Groups," + ($root.rootDomainNamingContext)
 		$ExcSRV = "CN=Exchange Servers,OU=Microsoft Exchange Security Groups," + ($root.rootDomainNamingContext)
 		$criticalobjects += get-adobject $Winperm -server $server -properties *
 		$criticalobjects += get-adobject $ExcSRV -server $server -properties *
 
 		if($error)
-			{ "$(Get-TimeStamp) Error while retrieving Exchange Trusted Subsytem or Exchange servers or Exchange Windows Permissions groups $($error)" | out-file log-adexport.log -append ; $error.clear() }
+			{ "$(Get-TimeStamp) Error while retrieving Exchange Trusted Subsytem or Exchange servers or Exchange Windows Permissions groups $($error)" | out-file $logfilename -append ; $error.clear() }
 
 		if($isonline -eq $true)
 			{
@@ -1571,9 +1621,9 @@ if($ISets -eq $true)
 				}
 				$counttrustedsubsysmembers = ($trustedsubsysmembers | measure-object).count
 				if($error)
-				{ "$(Get-TimeStamp) Error while retrieving ETS members $($error)" | out-file log-adexport.log -append ; $error.clear() }
+				{ "$(Get-TimeStamp) Error while retrieving ETS members $($error)" | out-file $logfilename -append ; $error.clear() }
 				else
-				{"$(Get-TimeStamp) Number of  ETS members: $($counttrustedsubsysmembers)" | out-file log-adexport.log -append}
+				{"$(Get-TimeStamp) Number of  ETS members: $($counttrustedsubsysmembers)" | out-file $logfilename -append}
 			}
 		else
 			{
@@ -1583,9 +1633,9 @@ if($ISets -eq $true)
 			if($continue)
 				{foreach($grp in $continue){$trustedsubsysmembersn2 = $grp | select-object -expandproperty member  | foreach-object{get-adobject $_ -server $server -properties *};$criticalobjects += $trustedsubsysmembersn2}}
 			if($error)
-				{ "$(Get-TimeStamp) Error while retrieving ETS members $($error)" | out-file log-adexport.log -append ; $error.clear() }
+				{ "$(Get-TimeStamp) Error while retrieving ETS members $($error)" | out-file $logfilename -append ; $error.clear() }
 				else
-				{"$(Get-TimeStamp) ETS members processed, getting nested groups till level 2 " | out-file log-adexport.log -append}
+				{"$(Get-TimeStamp) ETS members processed, getting nested groups till level 2 " | out-file $logfilename -append}
 			}
 		# Fetching transport rules, accepted domains, SMTP connectors and Mailbox databases
 		$SMTP = Get-ADObject -searchbase $root.configurationNamingContext -filter {(ObjectClass -eq "msExchTransportRule") -or (ObjectClass -eq "msExchAcceptedDomain")  -or (ObjectClass -eq "msExchRoutingSMTPConnector")  -or (ObjectClass -eq "msExchSmtpReceiveConnector") -or (ObjectClass -eq "msExchMDB")} -server $server -Properties *
@@ -1606,16 +1656,16 @@ if($ISets -eq $true)
 		$criticalobjects += $SMTP
 		$countSMTP = ($SMTP | measure-object).count
 				if($error)
-				{ "$(Get-TimeStamp) Error while retrieving mail flow and storage related objects $($error)" | out-file log-adexport.log -append ; $error.clear() }
+				{ "$(Get-TimeStamp) Error while retrieving mail flow and storage related objects $($error)" | out-file $logfilename -append ; $error.clear() }
 				else
 				{
 				if($SMTP)
-						{"$(Get-TimeStamp) Number of mail flow and storage related objects: $($countSMTP)" | out-file log-adexport.log -append}
+						{"$(Get-TimeStamp) Number of mail flow and storage related objects: $($countSMTP)" | out-file $logfilename -append}
 					else
-						{"$(Get-TimeStamp) Cannot read mail flow and storage related objects with the account running the script" | out-file log-adexport.log -append}
+						{"$(Get-TimeStamp) Cannot read mail flow and storage related objects with the account running the script" | out-file $logfilename -append}
 				}
 		#Getting RBAC rol assignements
-		"$(Get-TimeStamp) Retrieving RBAC role assignements" | out-file log-adexport.log -append
+		"$(Get-TimeStamp) Retrieving RBAC role assignements" | out-file $logfilename -append
 		$RBAC = Get-ADObject -SearchBase $serviceNC -SearchScope SubTree -filter {ObjectClass -eq "msExchRoleAssignment"} -server $server -properties *
 		if(($error -like '*timeout*') -or ($error -like '*invalid enumeration context*'))
 			{
@@ -1634,25 +1684,25 @@ if($ISets -eq $true)
 		if($RBAC)
 			{
 			$countRBAC = ($RBAC | Measure-object).count
-			"$(Get-TimeStamp) Number of RBAC role assignements: $($countRBAC)" | out-file log-adexport.log -append
+			"$(Get-TimeStamp) Number of RBAC role assignements: $($countRBAC)" | out-file $logfilename -append
 			$criticalobjects += $RBAC
 			# Get accounts with an RBAC role assigned
 			$RBACassignements =  $RBAC | Group-Object -Property msExchUserLink | foreach-object{if($_.Name){get-adobject -Filter {DistinguishedName -eq $_.Name} -server $server -Properties *}}
 
 				if($error)
-					{ "$(Get-TimeStamp) Error while retrieving accounts with an RBAC role assigned $($error)" | out-file log-adexport.log -append ; $error.clear() }
+					{ "$(Get-TimeStamp) Error while retrieving accounts with an RBAC role assigned $($error)" | out-file $logfilename -append ; $error.clear() }
 
 			#Get direct assignements
 			$usrRBACassignements = $RBACassignements | where-object{($_.objectClass -eq "user") -or ($_.objectClass -eq "inetOrgPerson") -or ($_.objectClass -eq "Computer")}
 			$criticalobjects += $usrRBACassignements
 				$countusrRBACassignements = ($usrRBACassignements | Measure-Object).count
-				"$(Get-TimeStamp) Number of accounts with RBAC direct assignement: $($countusrRBACassignements)" | out-file log-adexport.log -append
+				"$(Get-TimeStamp) Number of accounts with RBAC direct assignement: $($countusrRBACassignements)" | out-file $logfilename -append
 			if($error)
-					{ "$(Get-TimeStamp) Error while retrieving RBAC direct assignements $($error)" | out-file log-adexport.log -append ; $error.clear() }
+					{ "$(Get-TimeStamp) Error while retrieving RBAC direct assignements $($error)" | out-file $logfilename -append ; $error.clear() }
 			#Get assignements by groups, retrieve group membership
 			$grpRBACassignements = $RBACassignements | where-object{($_.objectClass -eq "group")}
 			$countgrpRBACassignements = ( $grpRBACassignements | measure-object).count
-			"$(Get-TimeStamp) Number of accounts with RBAC indirect assignement: $($countgrpRBACassignements)" | out-file log-adexport.log -append
+			"$(Get-TimeStamp) Number of accounts with RBAC indirect assignement: $($countgrpRBACassignements)" | out-file $logfilename -append
 			$criticalobjects += $grpRBACassignements
 			foreach($grp in $grpRBACassignements)
 				{
@@ -1681,23 +1731,23 @@ if($ISets -eq $true)
 					if($continue)
 						{foreach($grprole in $continue){$membersROLEn2 = $grprole | select-object -expandproperty member  | foreach-object{get-adobject $_ -server $server -properties *};$criticalobjects += $membersROLEn2}}
 					if($error)
-						{ "$(Get-TimeStamp) Error while retrieving RBAC indirect assignements $($error)" | out-file log-adexport.log -append ; $error.clear() }
+						{ "$(Get-TimeStamp) Error while retrieving RBAC indirect assignements $($error)" | out-file $logfilename -append ; $error.clear() }
 					}
 				}
 			if($error)
-				{ "$(Get-TimeStamp) Error while retrieving RBAC indirect assignements $($error)" | out-file log-adexport.log -append ; $error.clear() }
+				{ "$(Get-TimeStamp) Error while retrieving RBAC indirect assignements $($error)" | out-file $logfilename -append ; $error.clear() }
 
 			}
 		else
 			{
-			"$(Get-TimeStamp) Cannot read RBAC role assignements with the account running the script" | out-file log-adexport.log -append
+			"$(Get-TimeStamp) Cannot read RBAC role assignements with the account running the script" | out-file $logfilename -append
 			$OUGrpExch = "OU=Microsoft Exchange Security Groups," + $root.DefaultNamingContext
 			$GrpsExch = get-adobject -searchbase $OUGrpExch -Filter {ObjectClass -eq "Group"} -server $server -Properties *
 			$countGrpsExch = ($GrpsExch | measure-object).count
 			if($error)
-				{ "$(Get-TimeStamp) Error while retrieving groups under MS Exchange Security Groups container $($error)" | out-file log-adexport.log -append ; $error.clear() }
+				{ "$(Get-TimeStamp) Error while retrieving groups under MS Exchange Security Groups container $($error)" | out-file $logfilename -append ; $error.clear() }
 			else
-				{"$(Get-TimeStamp) Number of groups under MS Exchange Security Groups container: $($countGrpsExch)" | out-file log-adexport.log -append}
+				{"$(Get-TimeStamp) Number of groups under MS Exchange Security Groups container: $($countGrpsExch)" | out-file $logfilename -append}
 
 			if($GrpsExch)
 				{
@@ -1730,7 +1780,7 @@ if($ISets -eq $true)
 					}
 
 				if($error)
-					{ "$(Get-TimeStamp) Error while retrieving group membership of groups located under MS Exchange Security Groups container $($error)" | out-file log-adexport.log -append ; $error.clear() }
+					{ "$(Get-TimeStamp) Error while retrieving group membership of groups located under MS Exchange Security Groups container $($error)" | out-file $logfilename -append ; $error.clear() }
 				}
 
 			}
@@ -1740,7 +1790,7 @@ if($ISets -eq $true)
 	else
 		{
 		# If current domain is child domain, we need GC to retrieve some Exchange objects information.
-		"$(Get-TimeStamp) Retrieving Exchange Trusted Subsystem on root domain" | out-file log-adexport.log -append
+		"$(Get-TimeStamp) Retrieving Exchange Trusted Subsystem on root domain" | out-file $logfilename -append
 		$search = new-object System.DirectoryServices.DirectorySearcher
 		$search.searchroot = [ADSI]"GC://$($gc)"
 		$search.filter = "(DistinguishedName=$($trustedSubSystem))"
@@ -1753,9 +1803,9 @@ if($ISets -eq $true)
 			$gcobjects += $rootobjectsmembers
 			}
 		if($error)
-			{ "$(Get-TimeStamp) Error while retrieving Exchange Trusted SubSystem members in root domain $($error)" | out-file log-adexport.log -append ; $error.clear() }
+			{ "$(Get-TimeStamp) Error while retrieving Exchange Trusted SubSystem members in root domain $($error)" | out-file $logfilename -append ; $error.clear() }
 				else
-			{"$(Get-TimeStamp) Number of level 1 Exchange Trusted SubSystem members $($counttrustedsubsysmembers)" | out-file log-adexport.log -append}
+			{"$(Get-TimeStamp) Number of level 1 Exchange Trusted SubSystem members $($counttrustedsubsysmembers)" | out-file $logfilename -append}
 		# Windows Permissions and Exchange Servers is also retieved
 		$Winperm = "CN=Exchange Windows Permissions,OU=Microsoft Exchange Security Groups," + ($root.rootDomainNamingContext)
 		$ExcSRV = "CN=Exchange Servers,OU=Microsoft Exchange Security Groups," + ($root.rootDomainNamingContext)
@@ -1764,7 +1814,7 @@ if($ISets -eq $true)
 		$search.filter = "(DistinguishedName=$($ExcSRV))"
 		$gcobjects += $search.FindOne() | Convert-ADSearchResult
 		if($error)
-			{ "$(Get-TimeStamp) Error while retrieving Exchange Windows Permissions or Exchange servers groups $($error)" | out-file log-adexport.log -append ; $error.clear() }
+			{ "$(Get-TimeStamp) Error while retrieving Exchange Windows Permissions or Exchange servers groups $($error)" | out-file $logfilename -append ; $error.clear() }
 		# Fetching transport rules, accepted domains, SMTP connectors and Mailbox databases
 		$SMTP = Get-ADObject -searchbase $root.configurationNamingContext -filter {(ObjectClass -eq "msExchTransportRule") -or (ObjectClass -eq "msExchAcceptedDomain")  -or (ObjectClass -eq "msExchRoutingSMTPConnector")  -or (ObjectClass -eq "msExchSmtpReceiveConnector") -or (ObjectClass -eq "msExchMDB")} -server $server -Properties *
 
@@ -1786,13 +1836,13 @@ if($ISets -eq $true)
 		$criticalobjects += $SMTP
 		$countSMTP = ($SMTP | measure-object).count
 				if($error)
-					{ "$(Get-TimeStamp) Error while retrieving mail flow and storage related objects $($error)" | out-file log-adexport.log -append ; $error.clear() }
+					{ "$(Get-TimeStamp) Error while retrieving mail flow and storage related objects $($error)" | out-file $logfilename -append ; $error.clear() }
 				else
 					{
 					if($SMTP)
-						{"$(Get-TimeStamp) Number of mail flow and storage related objects: $($countSMTP)" | out-file log-adexport.log -append}
+						{"$(Get-TimeStamp) Number of mail flow and storage related objects: $($countSMTP)" | out-file $logfilename -append}
 					else
-						{"$(Get-TimeStamp) Cannot read mail flow and storage related objects with the account running the script" | out-file log-adexport.log -append}
+						{"$(Get-TimeStamp) Cannot read mail flow and storage related objects with the account running the script" | out-file $logfilename -append}
 					}
 
 		#Getting RBAC role assignements
@@ -1814,27 +1864,27 @@ if($ISets -eq $true)
 		if($RBAC)
 			{
 			$countRBAC = ($RBAC | Measure-object).count
-			"$(Get-TimeStamp) Number of RBAC role assignements: $($countRBAC)" | out-file log-adexport.log -append
+			"$(Get-TimeStamp) Number of RBAC role assignements: $($countRBAC)" | out-file $logfilename -append
 			$criticalobjects += $RBAC
 			# Get objects assigned to role via GC
 			$RBACassignements =  $RBAC | Group-Object -Property msExchUserLink | foreach-object{if($_.Name){$search.filter = "(DistinguishedName=$($_.Name))"; $search.FindOne() | Convert-ADSearchResult}}
 			if($error)
-				{ "$(Get-TimeStamp) Error while retrieving accounts with an RBAC role assigned $($error)" | out-file log-adexport.log -append ; $error.clear() }
+				{ "$(Get-TimeStamp) Error while retrieving accounts with an RBAC role assigned $($error)" | out-file $logfilename -append ; $error.clear() }
 
 			$usrRBACassignements = $RBACassignements | where-object{($_.objectClass -eq "user") -or ($_.objectClass -eq "inetOrgPerson") -or ($_.objectClass -eq "Computer")}
 			$gcobjects += $usrRBACassignements
 			$countusrRBACassignements = ($usrRBACassignements | Measure-Object).count
-			"$(Get-TimeStamp) Number of accounts with a direct RBAC assignement: $($countusrRBACassignements)" | out-file log-adexport.log -append
+			"$(Get-TimeStamp) Number of accounts with a direct RBAC assignement: $($countusrRBACassignements)" | out-file $logfilename -append
 			$grpRBACassignements = $RBACassignements | where-object{($_.objectClass -eq "group")}
 			# Get RBAC indirect assignements but not group membership
 			$countgrpRBACassignements = ( $grpRBACassignements | measure-object).count
-			"$(Get-TimeStamp) Number of groups with an indirect RBAC assignement:  $($countgrpRBACassignements)" | out-file log-adexport.log -append
+			"$(Get-TimeStamp) Number of groups with an indirect RBAC assignement:  $($countgrpRBACassignements)" | out-file $logfilename -append
 			$gcobjects += $grpRBACassignements
 			}
 		else
 			{
-			"$(Get-TimeStamp) RBAC roles could not be retrieved by current account" | out-file log-adexport.log -append
-			"$(Get-TimeStamp) Retrieving groups located in the Microsoft Exchange Security Groups container via GC" | out-file log-adexport.log -append
+			"$(Get-TimeStamp) RBAC roles could not be retrieved by current account" | out-file $logfilename -append
+			"$(Get-TimeStamp) Retrieving groups located in the Microsoft Exchange Security Groups container via GC" | out-file $logfilename -append
 			$OUGrpExch = "OU=Microsoft Exchange Security Groups," + $root.rootDomainNamingContext
 			$search.searchroot = [ADSI]"GC://$($gc)/$($OUGrpExch)"
 			$search.filter = "(ObjectClass=Group)"
@@ -1850,9 +1900,9 @@ if($ISets -eq $true)
 				$gcobjects += $GrpExchmembers
 				}
 			if($error)
-				{ "$(Get-TimeStamp) Error while retrieving groups plus members located under the Microsoft Exchange Security Groups container in the root domain $($error)" | out-file log-adexport.log -append ; $error.clear() }
+				{ "$(Get-TimeStamp) Error while retrieving groups plus members located under the Microsoft Exchange Security Groups container in the root domain $($error)" | out-file $logfilename -append ; $error.clear() }
 			else
-				{"$(Get-TimeStamp) Number of groups located in Microsoft Exchange Security Groups container in the root domain: $($countGrpsExch)" | out-file log-adexport.log -append}
+				{"$(Get-TimeStamp) Number of groups located in Microsoft Exchange Security Groups container in the root domain: $($countGrpsExch)" | out-file $logfilename -append}
 
 			}
 		}
@@ -1864,7 +1914,7 @@ $error.clear()
 #Processing custom group, please fill in table at the begining of the script for processing
 if($groupscustom)
 	{
-    "$(Get-TimeStamp) Custom groups provided by the analyst" | out-file log-adexport.log -append
+    "$(Get-TimeStamp) Custom groups provided by the analyst" | out-file $logfilename -append
 	foreach($grpcustom in $groupscustom)
 		{
 		$grpc = get-adobject -filter {Name -eq $grpcustom} -server $server -properties *
@@ -1892,8 +1942,8 @@ if($groupscustom)
 		}
 
         if($error)
-            { "$(Get-TimeStamp) Error while retrieving custom groups $($error)" | out-file log-adexport.log -append ; $error.clear() }
-        "$(Get-TimeStamp) Custom groups retrieved" | out-file log-adexport.log -append
+            { "$(Get-TimeStamp) Error while retrieving custom groups $($error)" | out-file $logfilename -append ; $error.clear() }
+        "$(Get-TimeStamp) Custom groups retrieved" | out-file $logfilename -append
 	}
 
 
@@ -1916,9 +1966,9 @@ if($groupscustom)
 	}
 $countDynObjects = ($DynObjects | measure-object).count
 if($error)
-    { "$(Get-TimeStamp) Error while retrieving dynamic objects $($error)" | out-file log-adexport.log -append ; $error.clear() }
+    { "$(Get-TimeStamp) Error while retrieving dynamic objects $($error)" | out-file $logfilename -append ; $error.clear() }
 else {
-	"$(Get-TimeStamp) Number of dynamic objects: $($countDynObjects)" | out-file log-adexport.log -append
+	"$(Get-TimeStamp) Number of dynamic objects: $($countDynObjects)" | out-file $logfilename -append
 	}
 if($DynObjects)
 	{
@@ -1947,9 +1997,9 @@ if($DynObjects)
 		}
 
 	if($error)
-		{ "$(Get-TimeStamp) Error while retrieving TTL for dynamic objects $($error)" | out-file log-adexport.log -append ; $error.clear() }
+		{ "$(Get-TimeStamp) Error while retrieving TTL for dynamic objects $($error)" | out-file $logfilename -append ; $error.clear() }
 	else
-		{"$(Get-TimeStamp) Number of dynamic objects with TTL set: $($ttlcount)" | out-file log-adexport.log -append}
+		{"$(Get-TimeStamp) Number of dynamic objects with TTL set: $($ttlcount)" | out-file $logfilename -append}
 	}
 
 
@@ -2017,23 +2067,23 @@ if($ADFSDeviceregObjects){Remove-variable ADFSDeviceregObjects}
 
 
 #Launching garbage collector to free up some RAM
-"$(Get-TimeStamp) Freeing up memory" | out-file log-adexport.log -append
+"$(Get-TimeStamp) Freeing up memory" | out-file $logfilename -append
 write-output -inputobject "---- Freeing up memory ----"
 [System.GC]::Collect()
 if($error)
-    { "$(Get-TimeStamp) Error while freeing up memory $($error)" | out-file log-adexport.log -append ; $error.clear() }
+    { "$(Get-TimeStamp) Error while freeing up memory $($error)" | out-file $logfilename -append ; $error.clear() }
 
 
 
 write-output -inputobject "---- Exporting objects as XML ----"
 #Removing objects collected twice or more
 $criticalobjects = $criticalobjects | sort-object -unique -Property DistinguishedName
-"$(Get-TimeStamp) Removed LDAP objects collected twice or more" | out-file log-adexport.log -append
+"$(Get-TimeStamp) Removed LDAP objects collected twice or more" | out-file $logfilename -append
 # Exporting objects
-$criticalobjects | export-cliXML ADobjects.xml
-"$(Get-TimeStamp) Objects retrieved via LDAP exported in ADobjects.xml" | out-file log-adexport.log -append
+$criticalobjects | export-cliXML $adobjectsfilename
+"$(Get-TimeStamp) Objects retrieved via LDAP exported in ADobjects.xml" | out-file $logfilename -append
 if($error)
-    { "$(Get-TimeStamp) Error while exporting objects retrieved via LDAP $($error)" | out-file log-adexport.log -append ; $error.clear() }
+    { "$(Get-TimeStamp) Error while exporting objects retrieved via LDAP $($error)" | out-file $logfilename -append ; $error.clear() }
 
 
 
@@ -2042,15 +2092,15 @@ $nbviagc = $null
 if($gcobjects)
 	{
 	$gcobjects = $gcobjects | sort-object -unique -Property DistinguishedName
-	"$(Get-TimeStamp) Removed GC objects collected twice or more" | out-file log-adexport.log -append
-	$gcobjects | export-cliXML gcADobjects.xml
-	"$(Get-TimeStamp) Global Catalog objects exported in gcADobjects.xml" | out-file log-adexport.log -append
+	"$(Get-TimeStamp) Removed GC objects collected twice or more" | out-file $logfilename -append
+	$gcobjects | export-cliXML $gcADobjectsfilename
+	"$(Get-TimeStamp) Global Catalog objects exported in gcADobjects.xml" | out-file $logfilename -append
 	if($error)
-		{ "$(Get-TimeStamp) Error while exporting global catalog objects $($error)" | out-file log-adexport.log -append ; $error.clear() }
+		{ "$(Get-TimeStamp) Error while exporting global catalog objects $($error)" | out-file $logfilename -append ; $error.clear() }
 
 	$nbviaLDAP = ($criticalobjects | measure-object).count
 	$nbviagc = ($gcobjects | measure-object).count
-	"$(Get-TimeStamp) Number of objects retrieved via LDAP $($nbviaLDAP) and via Global Catalog $($nbviagc)" | out-file log-adexport.log -append
+	"$(Get-TimeStamp) Number of objects retrieved via LDAP $($nbviaLDAP) and via Global Catalog $($nbviagc)" | out-file $logfilename -append
 	$criticalobjects += $gcobjects
 	}
 
@@ -2058,9 +2108,9 @@ if($gcobjects)
 # generation TimeLine � partir des metadata de r�plication
 write-output -inputobject "---- Export done ----"
 write-output -inputobject "---- Generating AD timeline ----"
-"$(Get-TimeStamp) Starting to retrieve AD replication metadata" | out-file log-adexport.log -append
+"$(Get-TimeStamp) Starting to retrieve AD replication metadata" | out-file $logfilename -append
 $countcrit = ($criticalobjects | measure-object).count
-"$(Get-TimeStamp) Number of objects to process: $($countcrit)" | out-file log-adexport.log -append
+"$(Get-TimeStamp) Number of objects to process: $($countcrit)" | out-file $logfilename -append
 write-output -inputobject "----$($countcrit) Objects to process ----"
 
 
@@ -2098,7 +2148,7 @@ foreach ($criticalobject in $criticalobjects)
 	else{$whencreatedUTC = "N/A"}
 
     	if($error)
-        {"$(Get-TimeStamp) Error while retrieving AD replication metadata attributes msDS-ReplAttributeMetadata for $($criticalobject.DistinguishedName) $($error)" | out-file log-adexport.log -append ; $error.clear() }
+        {"$(Get-TimeStamp) Error while retrieving AD replication metadata attributes msDS-ReplAttributeMetadata for $($criticalobject.DistinguishedName) $($error)" | out-file $logfilename -append ; $error.clear() }
 	else
         {
 	    foreach($metada in $metadas)
@@ -2126,7 +2176,7 @@ foreach ($criticalobject in $criticalobjects)
 
 	    	    # Append temp object to global AD replication metadata object
 	    	    [void]$Replinfo.add($tmpobj)
-		    if($error){ "$(Get-TimeStamp) Error while editing global AD replication metadata object $($error) for $($criticalobject.DistinguishedName)" | out-file log-adexport.log -append ; $error.clear() }
+		    if($error){ "$(Get-TimeStamp) Error while editing global AD replication metadata object $($error) for $($criticalobject.DistinguishedName)" | out-file $logfilename -append ; $error.clear() }
 		    }
         }
 
@@ -2159,7 +2209,7 @@ foreach ($criticalobject in $criticalobjects)
 		else {$metadasgrp  = $null}
 
 			if($error)
-        			{ "$(Get-TimeStamp) Error while retrieving AD replication metadata attributes msDS-ReplValueMetadata for $($criticalobject.DistinguishedName) $($error)" | out-file log-adexport.log -append ; $error.clear() }
+        			{ "$(Get-TimeStamp) Error while retrieving AD replication metadata attributes msDS-ReplValueMetadata for $($criticalobject.DistinguishedName) $($error)" | out-file $logfilename -append ; $error.clear() }
 
 			else
 				{
@@ -2189,7 +2239,7 @@ foreach ($criticalobject in $criticalobjects)
 						add-member -InputObject $tmpobj -MemberType NoteProperty -Name usnLocalChange -Value $metada.usnLocalChange
 
 	    				[void]$Replinfo.add($tmpobj)
-						if($error){ "$(Get-TimeStamp) Error while editing global AD replication metadata object $($error) for $($criticalobject.DistinguishedName)" | out-file log-adexport.log -append ; $error.clear() }
+						if($error){ "$(Get-TimeStamp) Error while editing global AD replication metadata object $($error) for $($criticalobject.DistinguishedName)" | out-file $logfilename -append ; $error.clear() }
 						}
 
 
@@ -2200,17 +2250,17 @@ foreach ($criticalobject in $criticalobjects)
 	$i++
 	}
 
-"$(Get-TimeStamp) AD replication metadata retrieved" | out-file log-adexport.log -append
+"$(Get-TimeStamp) AD replication metadata retrieved" | out-file $logfilename -append
 
 
 # Sort by ftimeLastOriginatingChange to generate timeline and export as csv
-"$(Get-TimeStamp) Sorting AD replication metadata to generate timeline " | out-file log-adexport.log -append
+"$(Get-TimeStamp) Sorting AD replication metadata to generate timeline " | out-file $logfilename -append
 
-$Replinfo | Sort-Object -Property ftimeLastOriginatingChange | export-csv timeline.csv -delimiter ";" -NoTypeInformation
+$Replinfo | Sort-Object -Property ftimeLastOriginatingChange | export-csv $timelinefilename -delimiter ";" -NoTypeInformation
     if($error)
-        { "$(Get-TimeStamp) Error while sortig timeline $($error)" | out-file log-adexport.log -append ; $error.clear() }
+        { "$(Get-TimeStamp) Error while sortig timeline $($error)" | out-file $logfilename -append ; $error.clear() }
     else
-        { "$(Get-TimeStamp) Timeline created" | out-file log-adexport.log -append }
+        { "$(Get-TimeStamp) Timeline created" | out-file $logfilename -append }
 
 write-output -inputobject "---- Timeline created ----"
 
