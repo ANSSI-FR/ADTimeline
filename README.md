@@ -28,6 +28,8 @@ Objects considered of interest retrieved by the script include:
 - DPAPI secrets.
 - Domain controllers (Computer objects, ntdsdsa and server objects).
 - DNS zones.
+- Group Policy Objects (existing and deleted).
+- WMI filters.
 - Accounts with suspicious SIDHistory (scope is forest wide).
 - Sites.
 - Organizational Units.
@@ -76,17 +78,17 @@ PS> .\AD-timeline.ps1 -server "127.0.0.1:3266"
 
 Output files are generated in the current directory:
 
-- timeline.csv: The timeline generated with the AD replication metadata of objects retrieved.
-- log-adexport.log: Script log file. You will also find various information on the domain.
-- ADobjects.xml: Objects of interest retrieved via LDAP.
-- gcADobjects.xml: Objects of interest retrieved via the Global Catalog.
+- timeline_%DOMAINFQDN%.csv: The timeline generated with the AD replication metadata of objects retrieved.
+- logfile_%DOMAINFQDN%.log: Script log file. You will also find various information on the domain.
+- ADobjects_%DOMAINFQDN%.xml: Objects of interest retrieved via LDAP.
+- gcADobjects_%DOMAINFQDN%.xml: Objects of interest retrieved via the Global Catalog.
 
 
 To import files for analysis with powershell.
 ```powershell
-PS> import-csv timeline.csv -delimiter ";"
-PS> import-clixml ADobjects.xml
-PS> import-clixml gcADobjects.xml
+PS> import-csv timeline_%DOMAINFQDN%.csv -delimiter ";"
+PS> import-clixml ADobjects_%DOMAINFQDN%.xml
+PS> import-clixml gcADobjects_%DOMAINFQDN%.xml
 ```
 
 ## Custom groups <a name="groups"></a>
