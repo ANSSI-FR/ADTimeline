@@ -38,7 +38,8 @@ Objects considered of interest retrieved by the script include:
 - Schema attributes with particular SearchFlags (Do not audit or confidential).
 - Kerberoastable user accounts (SPN value).
 - AS-REP roastable accounts (UserAccountControl value).
-- CertificationAuthority objects.
+- Authentication policy silos.
+- CertificationAuthority and pKIEnrollmentService objects.
 - Cross Reference containers.
 - Exchange RBAC roles and accounts assigned to a role.
 - Exchange mail flow configuration objects.
