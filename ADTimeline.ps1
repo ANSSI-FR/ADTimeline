@@ -282,10 +282,11 @@ if($domainfqdn)
 		$adobjectsfilename = "ADobjects_" + $domainfqdn + ".xml"
 		$gcADobjectsfilename = "gcADobjects_" + $domainfqdn + ".xml"
 		}
-	Rename-item ".\logfile.log" $logfilename
-	New-Item -ItemType File -Name $timelinefilename | Out-Null
-	New-Item -ItemType File -Name $adobjectsfilename | Out-Null
-	New-Item -ItemType File -Name $gcADobjectsfilename | Out-Null
+	if(test-path($logfilename)){remove-item $logfilename -force -confirm:$false}
+	Rename-item ".\logfile.log" $logfilename -force -confirm:$false
+	New-Item -ItemType File -Name $timelinefilename -force -confirm:$false | Out-Null
+	New-Item -ItemType File -Name $adobjectsfilename -force -confirm:$false | Out-Null
+	New-Item -ItemType File -Name $gcADobjectsfilename -force -confirm:$false | Out-Null
 	if($error)
 		{ "$(Get-TimeStamp) Error while setting setting filenames for output files with error $($error)" | out-file logfile.log -append
 		$error.clear()
@@ -1131,8 +1132,8 @@ else
 	}
 
 
-#Get AD replication sites, CertificationAuthority, CrossRefs objects in the configuration partition
-$sitesIGC = get-adobject -searchbase $root.configurationNamingContext -SearchScope SubTree -Filter {(ObjectClass -eq "CertificationAuthority") -or (ObjectClass -eq "site") -or (ObjectClass -eq "crossRefContainer") -or (ObjectClass -eq "crossRef")} -server $server -properties *
+#Get AD replication sites, CertificationAuthority, pKIEnrollmentService, msDS-AuthNPolicySilo, msDS-AuthNPolicy and CrossRefs objects in the configuration partition
+$sitesIGC = get-adobject -searchbase $root.configurationNamingContext -SearchScope SubTree -Filter {(ObjectClass -eq "CertificationAuthority") -or (ObjectClass -eq "pKIEnrollmentService") -or (ObjectClass -eq "msDS-AuthNPolicySilo") -or (ObjectClass -eq "msDS-AuthNPolicy") -or (ObjectClass -eq "site") -or (ObjectClass -eq "crossRefContainer") -or (ObjectClass -eq "crossRef")} -server $server -properties *
 if(($error -like '*timeout*') -or ($error -like '*invalid enumeration context*'))
 	{
 	$i = 1
@@ -1141,7 +1142,7 @@ if(($error -like '*timeout*') -or ($error -like '*invalid enumeration context*')
 		$resultspagesize = 256 - $i * 40
 		write-output -inputobject "LDAP time out, trying again with ResultPageSize $($resultspagesize)"
 		$error.clear()
-		$sitesIGC = Get-ADObject -ResultPageSize $resultspagesize -searchbase $root.configurationNamingContext -SearchScope SubTree -Filter {(ObjectClass -eq "CertificationAuthority") -or (ObjectClass -eq "site") -or (ObjectClass -eq "crossRefContainer") -or (ObjectClass -eq "crossRef")} -server $server -properties *
+		$sitesIGC = Get-ADObject -ResultPageSize $resultspagesize -searchbase $root.configurationNamingContext -SearchScope SubTree -Filter {(ObjectClass -eq "CertificationAuthority") -or (ObjectClass -eq "pKIEnrollmentService") -or (ObjectClass -eq "msDS-AuthNPolicySilo") -or (ObjectClass -eq "msDS-AuthNPolicy") -or (ObjectClass -eq "site") -or (ObjectClass -eq "crossRefContainer") -or (ObjectClass -eq "crossRef")} -server $server -properties *
 		$i++
 		}
 	if($sitesIGC){write-output -inputobject "LDAP query succeeded with different ResultPageSize"}
@@ -1149,13 +1150,16 @@ if(($error -like '*timeout*') -or ($error -like '*invalid enumeration context*')
 	}
 $criticalobjects +=  $sitesIGC
 $countADreplsites = ($sitesIGC | where-object{$_.ObjectClass -eq "site"} |  measure-object).count
+$countpKIEnrollmentService = ($sitesIGC | where-object{$_.ObjectClass -eq "pKIEnrollmentService"} |  measure-object).count
 $countADIGC = ($sitesIGC | where-object{$_.ObjectClass -eq "CertificationAuthority"} |  measure-object).count
-
+$countAuthN = ($sitesIGC | where-object{($_.ObjectClass -eq "msDS-AuthNPolicySilo") -or ($_.ObjectClass -eq "msDS-AuthNPolicy")} |  measure-object).count
 if($error)
-    { "$(Get-TimeStamp) Error while retrieving AD replication sites and CertificationAuthority objects $($error)" | out-file $logfilename -append ; $error.clear() }
+    { "$(Get-TimeStamp) Error while retrieving AD replication sites, CertificationAuthority, pKIEnrollmentService, msDS-AuthNPolicy and msDS-AuthNPolicysilos objects $($error)" | out-file $logfilename -append ; $error.clear() }
 else {
 	"$(Get-TimeStamp) Number of AD replication sites in the configuration partition: $($countADreplsites)" | out-file $logfilename -append
 	"$(Get-TimeStamp) Number of CertificationAuthority objects in the configuration partition: $($countADIGC)" | out-file $logfilename -append
+	"$(Get-TimeStamp) Number of pKIEnrollmentService objects in the configuration partition: $($countpKIEnrollmentService)" | out-file $logfilename -append
+	"$(Get-TimeStamp) Number of AuthNPolicy or silos objects in the configuration partition: $($countAuthN)" | out-file $logfilename -append
 	$crossrefcontainer = $sitesIGC | where-object{($_.Name -eq "Partitions") -and ($_.ObjectClass -eq "crossRefContainer")}
 	$DomainNamingMaster = (($crossrefcontainer.fsmoRoleOwner).replace($root.configurationNamingContext,"")).replace("CN=NTDS Settings,","")
 	}
@@ -2102,6 +2106,9 @@ if($gcobjects)
 	$nbviagc = ($gcobjects | measure-object).count
 	"$(Get-TimeStamp) Number of objects retrieved via LDAP $($nbviaLDAP) and via Global Catalog $($nbviagc)" | out-file $logfilename -append
 	$criticalobjects += $gcobjects
+	}
+else {
+	remove-item $gcADobjectsfilename -force -confirm:$false
 	}
 
 
