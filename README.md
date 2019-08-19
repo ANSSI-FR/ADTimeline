@@ -21,6 +21,7 @@ Objects considered of interest retrieved by the script include:
 - Domain trusts.
 - Deleted users (i.e. tombstoned).
 - Objects protected by the SDProp process (i.e. AdminCount equals 1).
+- The Guest account.
 - The AdminSDHolder object.
 - Objects having an ACE on the AdminSDHolder object.
 - Class Schema objects.

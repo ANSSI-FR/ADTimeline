@@ -454,6 +454,26 @@ else
 		{"$(Get-TimeStamp) Number of Pre Windows 2000 Compatibility access group members: $($countpre2000grp)" | out-file $logfilename -append}
 		}
 	}
+#Grabing Guest Account
+$guestaccsid = $domSID + "-501"
+$guestacc =  Get-ADObject -filter {ObjectSID -eq $guestaccsid} -Server $server -properties *
+if($error)
+		{ "$(Get-TimeStamp) Error while retrieving DNSADmins group members $($error)" | out-file $logfilename -append ; $error.clear() }
+else 
+	{	
+	if($guestacc)
+		{
+		$criticalobjects += $guestacc
+		if(($guestacc.UserAccountControl -band 2) -eq 2)
+			{
+			"$(Get-TimeStamp) Guest account is disabled" | out-file $logfilename -append
+			}
+		else 
+			{
+			"$(Get-TimeStamp) Guest account is enabled!" | out-file $logfilename -append
+			}	
+		}
+	}
 
 #Grabing the DNSAdmin groups and its members well knwon SID is S-1-5-21-<Domain>-1102
 $dndnsadminSID = $domSID + "-1102"
