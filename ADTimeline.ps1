@@ -458,7 +458,7 @@ else
 $guestaccsid = $domSID + "-501"
 $guestacc =  Get-ADObject -filter {ObjectSID -eq $guestaccsid} -Server $server -properties *
 if($error)
-		{ "$(Get-TimeStamp) Error while retrieving DNSADmins group members $($error)" | out-file $logfilename -append ; $error.clear() }
+		{ "$(Get-TimeStamp) Error while retrieving Guest account $($error)" | out-file $logfilename -append ; $error.clear() }
 else 
 	{	
 	if($guestacc)
