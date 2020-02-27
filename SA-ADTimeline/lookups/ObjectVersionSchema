@@ -1,0 +1,10 @@
+ObjectVersion,SchemaVersion
+13,Windows 2000 Server
+30,Windows 2003 Server
+31,Windows 2003R2 Server
+44,Windows 2008 Server
+47,Windows 2008R2 Server
+56,Windows 2012 Server
+69,Windows 2012R2 Server
+87,Windows 2016 Server
+88,Windows 2019 Server

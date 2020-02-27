@@ -1,0 +1,500 @@
+<form>
+  <label>Sensitive accounts</label>
+  <fieldset submitButton="false"></fieldset>
+  <row>
+    <panel>
+      <input type="dropdown" token="ad_index" searchWhenChanged="true">
+        <label>Choose index to process:</label>
+        <search>
+          <query>| tstats latest(_time) where index=*  by index</query>
+        </search>
+        <selectFirstChoice>true</selectFirstChoice>
+        <fieldForLabel>index</fieldForLabel>
+        <fieldForValue>index</fieldForValue>
+      </input>
+      <input type="dropdown" token="domain_host" searchWhenChanged="true">
+        <label>Choose AD Domain to process:</label>
+        <search>
+          <query>| tstats latest(_time) where index=$ad_index$ (sourcetype=adobjects OR sourcetype=gcobjects OR sourcetype=adtimeline)  by host</query>
+        </search>
+        <selectFirstChoice>true</selectFirstChoice>
+        <fieldForLabel>host</fieldForLabel>
+        <fieldForValue>host</fieldForValue>
+      </input>
+    </panel>
+    <panel>
+      <html>
+      <p style="text-align:center;">
+          <img src="/static/app/SA-ADTimeline/images/logo.png"/>
+        </p>
+      </html>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Admin accounts:</title>
+      <table>
+        <title>Inventory, adminCount attribute:</title>
+        <search>
+          <query>index=$ad_index$ host=$domain_host$ sourcetype=adobjects  (ObjectClass = "user" OR ObjectClass = "inetOrgPerson" OR ObjectClass = "Computer") AND (adminCount=1 NOT Name="krbtgt") |  eval Status = if((userAccountControl%4)&gt;=2,"disabled","enabled")  | eval SmartCard = if(round (((userAccountControl / pow(2, 18)) %2), 0) == 1,"required","not required")  | eval be_delegated = if(round(((userAccountControl / pow(2, 20)) %2), 0) == 1,"cannot","can") | eval lastlogon_timestamp = strftime(lastLogonTimestamp/10000000 - 11644473600, "%Y-%m-%dT%H:%M:%S") | table DN, Status, be_delegated, SmartCard,  lastlogon_timestamp, whenCreated | sort -lastlogon_timestamp</query>
+          <earliest>0</earliest>
+          <latest></latest>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">cell</option>
+        <format type="color" field="be_delegated">
+          <colorPalette type="map">{"can":#D98491,"cannot":#A1D379}</colorPalette>
+        </format>
+        <format type="color" field="SmartCard">
+          <colorPalette type="map">{"not required":#D98491,"required":#A1D379}</colorPalette>
+        </format>
+        <format type="color" field="Status">
+          <colorPalette type="map">{"enabled":#A1D379,"disabled":#F8BE34}</colorPalette>
+        </format>
+        <drilldown>
+          <link target="_blank">search?q=index=$ad_index$%20host=$domain_host$%20sourcetype=adobjects%20%20(ObjectClass%20=%20%22user%22%20OR%20ObjectClass%20=%20%22inetOrgPerson%22%20OR%20ObjectClass%20=%20%22Computer%22)%20AND%20(adminCount=1%20NOT%20Name=%22krbtgt%22)%20%7C%20%20eval%20Status%20=%20if((userAccountControl%254)%3E=2,%22disabled%22,%22enabled%22)%20%20%7C%20eval%20SmartCard%20=%20if(round%20(((userAccountControl%20/%20pow(2,%2018))%20%252),%200)%20==%201,%22required%22,%22not%20required%22)%20%20%7C%20eval%20be_delegated%20=%20if(round(((userAccountControl%20/%20pow(2,%2020))%20%252),%200)%20==%201,%22cannot%22,%22can%22)%20%7C%20eval%20lastlogon_timestamp%20=%20strftime(lastLogonTimestamp/10000000%20-%2011644473600,%20%22%25Y-%25m-%25dT%25H:%25M:%25S%22)%20%7C%20search%20$click.name2$%20=%20%22$click.value2$%22&amp;earliest=0&amp;latest=</link>
+        </drilldown>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <table>
+        <title>Timeline, adminCount attribute:</title>
+        <search>
+          <query>index=$ad_index$ host=$domain_host$ sourcetype=adtimeline  (pszAttributeName = adminCount OR pszAttributeName = isDeleted OR pszAttributeName = member OR pszAttributeName = userAccountControl OR pszAttributeName = whenCreated) [search index=$ad_index$ host=$domain_host$ sourcetype=adobjects  (ObjectClass = "user" OR ObjectClass = "inetOrgPerson" OR ObjectClass = "group") AND adminCount=1 | table DN] | table _time, DN, pszAttributeName, Member, dwVersion, ftimeCreated, ftimeDeleted | sort -_time</query>
+          <earliest>0</earliest>
+          <latest></latest>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">cell</option>
+        <format type="color" field="dwVersion">
+          <colorPalette type="minMidMax" maxColor="#006D9C" minColor="#FFFFFF"></colorPalette>
+          <scale type="minMidMax"></scale>
+        </format>
+        <format type="color" field="pszAttributeName">
+          <colorPalette type="map">{"whenCreated":#53A051,"isDeleted":#DC4E41,"member":#006D9C,"adminCount":#EC9960,"userAccountControl":#62B3B2}</colorPalette>
+        </format>
+        <format type="color" field="DN">
+          <colorPalette type="sharedList"></colorPalette>
+          <scale type="sharedCategory"></scale>
+        </format>
+        <format type="color" field="Member">
+          <colorPalette type="sharedList"></colorPalette>
+          <scale type="sharedCategory"></scale>
+        </format>
+        <drilldown>
+          <link target="_blank">search?q=index=$ad_index$%20host=$domain_host$%20sourcetype=adtimeline%20%20%5Bsearch%20index=$ad_index$%20host=$domain_host$%20sourcetype=adobjects%20%20(ObjectClass%20=%20%22user%22%20OR%20ObjectClass%20=%20%22inetOrgPerson%22%20OR%20ObjectClass%20=%20%22group%22)%20AND%20adminCount=1%20%7C%20table%20DN%5D%20%7C%20search%20$click.name2$%20=%20%22$click.value2$%22&amp;earliest=0&amp;latest=</link>
+        </drilldown>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Accounts sensitive to Kerberoast attacks:</title>
+      <chart rejects="$show_html_kerberoast1$">
+        <title>Ratio of kerberoastable accounts being privileged in the domain, SPN and adminCount attributes:</title>
+        <search>
+          <query>index=$ad_index$ host=$domain_host$ sourcetype=adobjects   (ObjectClass = "user" OR ObjectClass = "inetOrgPerson")  AND  ( SPNs = "*" AND NOT Name=krbtgt) | eval SPN = replace(SPNs, "(&lt;(.|)S&gt;|[\\nr])" , "")  | fillnull value="notset" adminCount | stats count as "Admincount ratio for users with SPN" by adminCount</query>
+          <earliest>$earliest$</earliest>
+          <latest>$latest$</latest>
+          <progress>
+            <condition match="$job.resultCount$ == 0">
+              <set token="show_html_kerberoast1">toto</set>
+            </condition>
+            <condition>
+              <unset token="show_html_kerberoast1"></unset>
+            </condition>
+          </progress>
+        </search>
+        <option name="charting.axisTitleX.visibility">visible</option>
+        <option name="charting.axisTitleY.visibility">visible</option>
+        <option name="charting.axisTitleY2.visibility">visible</option>
+        <option name="charting.chart">pie</option>
+        <option name="charting.chart.rangeValues">[0,4,4.1,7]</option>
+        <option name="charting.chart.style">shiny</option>
+        <option name="charting.fieldColors">{"1":0xFF0000}</option>
+        <option name="charting.gaugeColors">["0xdc4e41","0xf8be34","0x53a051"]</option>
+        <option name="charting.legend.placement">right</option>
+        <option name="height">236</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="trellis.enabled">0</option>
+        <option name="trellis.size">medium</option>
+        <option name="trellis.splitBy">Name</option>
+        <drilldown>
+          <link target="_blank">search?q=index=$ad_index$%20host=$domain_host$%20sourcetype=adobjects%20%20%20(ObjectClass%20=%20%22user%22%20OR%20ObjectClass%20=%20%22inetOrgPerson%22)%20%20AND%20%20(%20SPNs%20=%20%22*%22%20AND%20NOT%20Name=krbtgt)%20%7C%20eval%20SPN%20=%20replace(SPNs,%20%22(%3C(.%7C)S%3E%7C%5B%5C%5Cnr%5D)%22%20,%20%22%22)%20%20%7C%20fillnull%20value=%22notset%22%20adminCount%20%7C%20%20search%20$click.name$%20=%20%22$click.value$%22&amp;earliest=$earliest$&amp;latest=$latest$</link>
+        </drilldown>
+      </chart>
+      <html depends="$show_html_kerberoast1$">
+         <p style="font-weight: bold !important;font-size:14px">Ratio of kerberoastable accounts being privileged in the domain, SPN and adminCount attributes: No results</p>
+      </html>
+      <table rejects="$show_html_kerberoast2$">
+        <title>Kerberoastable accounts inventory:</title>
+        <search>
+          <progress>
+            <condition match="$job.resultCount$ == 0">
+              <set token="show_html_kerberoast2">toto</set>
+            </condition>
+            <condition>
+              <unset token="show_html_kerberoast2"></unset>
+            </condition>
+          </progress>
+          <query>index=$ad_index$ host=$domain_host$ sourcetype=adobjects  (ObjectClass = "user" OR ObjectClass = "inetOrgPerson") AND (SPNs = "*" AND NOT Name= "krbtgt") | eval SPN = replace(SPNs, "(&lt;(.|)S&gt;|[\\nr])" , "") | fillnull value="notset" adminCount | eval Status = if((userAccountControl%4)&gt;=2,"disabled","enabled")  | eval lastlogon_timestamp = strftime(lastLogonTimestamp/10000000 - 11644473600, "%Y-%m-%dT%H:%M:%S") | table DN, SPN, Status, adminCount, SID, lastlogon_timestamp, whenCreated | sort -lastlogon_timestamp</query>
+          <earliest>0</earliest>
+          <latest></latest>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">cell</option>
+        <format type="color" field="adminCount">
+          <colorPalette type="map">{"0":#A1D379,"1":#D98491,"notset":#A1D379}</colorPalette>
+        </format>
+        <format type="color" field="Status">
+          <colorPalette type="map">{"enabled":#A1D379,"disabled":#F8BE34}</colorPalette>
+        </format>
+        <drilldown>
+          <link target="_blank">search?q=index=$ad_index$%20host=$domain_host$%20sourcetype=adobjects%20%20(ObjectClass%20=%20%22user%22%20OR%20ObjectClass%20=%20%22inetOrgPerson%22)%20AND%20(SPNs%20=%20%22*%22%20AND%20NOT%20Name=%20%22krbtgt%22)%20%7C%20eval%20SPN%20=%20replace(SPNs,%20%22(%3C(.%7C)S%3E%7C%5B%5C%5Cnr%5D)%22%20,%20%22%22)%20%7C%20fillnull%20value=%22notset%22%20adminCount%20%7C%20eval%20Status%20=%20if((userAccountControl%254)%3E=2,%22disabled%22,%22enabled%22)%20%20%7C%20eval%20lastlogon_timestamp%20=%20strftime(lastLogonTimestamp/10000000%20-%2011644473600,%20%22%25Y-%25m-%25dT%25H:%25M:%25S%22)%20%7C%20search%20$click.name2$%20=%20%22$click.value2$%22&amp;earliest=0&amp;latest=</link>
+        </drilldown>
+      </table>
+      <html depends="$show_html_kerberoast2$">
+         <p style="font-weight: bold !important;font-size:14px">Kerberoastable accounts inventory: No results</p>
+      </html>
+    </panel>
+    <panel>
+      <title>Sensitive default accounts:</title>
+      <html>
+        <style>         
+		      #Krbtgt .single-value .single-result {
+          font-size:25px !important;
+          }
+          #LocalAdmin .single-value .single-result {
+          font-size:25px !important;
+          }
+          #LocalAdmin2 .single-value .single-result {
+          font-size:25px !important;
+          }
+          #guest .single-value .single-result {
+          font-size:25px !important;
+          }
+        </style>
+     </html>
+      <single id="LocalAdmin">
+        <title>Administrator account (RID 500):</title>
+        <search>
+          <query>index=$ad_index$ host=$domain_host$ sourcetype=adobjects [search index=$ad_index$ host=$domain_host$ sourcetype=adobjects  ObjectClass = "DomainDNS" | strcat SID "-500" SID | table SID]  | eval Status = if((userAccountControl%4)&gt;=2,"Administrator account is disabled","Administrator account is enabled") | table Status</query>
+          <earliest>$earliest$</earliest>
+          <latest>$latest$</latest>
+        </search>
+        <option name="drilldown">all</option>
+        <option name="height">50</option>
+        <option name="refresh.display">progressbar</option>
+        <drilldown>
+          <link target="_blank">search?q=index=$ad_index$%20host=$domain_host$%20%20(sourcetype=adobjects%20%20OR%20sourcetype=adtimeline)%20%5Bsearch%20index=$ad_index$%20host=$domain_host$%20sourcetype=adobjects%20%20ObjectClass%20=%20%22DomainDNS%22%20%7C%20strcat%20SID%20%22-500%22%20SID%20%7C%20table%20SID%5D&amp;earliest=$earliest$&amp;latest=$latest$</link>
+        </drilldown>
+      </single>
+      <html tokens="true" encoded="true">
+        <![CDATA[
+          <br/>
+          ]]>
+      </html>
+      <single id="LocalAdmin2">
+        <search>
+          <query>index=$ad_index$ host=$domain_host$ sourcetype=adtimeline pszAttributeName=SamAccountName [search index=$ad_index$ host=$domain_host$ sourcetype=adobjects  ObjectClass = "DomainDNS" | strcat SID "-500" SID | table SID] | eval checkRenameAdmin =case(dwVersion &gt;= 2, "Administrator account was renamed", 1=1 , "Administrator account was not renamed") | table checkRenameAdmin</query>
+          <earliest>$earliest$</earliest>
+          <latest>$latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="height">50</option>
+        <option name="refresh.display">progressbar</option>
+      </single>
+      <table>
+        <search>
+          <query>index=$ad_index$ host=$domain_host$ sourcetype=adtimeline (pszAttributeName=pwdLastSet OR pszAttributeName=SamAccountName OR pszAttributeName=userAccountControl OR pszAttributeName=lockoutTime OR pszAttributeName=LastlogonTimestamp)  [search index=$ad_index$ host=$domain_host$ sourcetype=adobjects  ObjectClass = "DomainDNS" | strcat SID "-500" SID | table SID] |  makemv pszLastOriginatingDsaDN delim=",CN=" | eval OriginatingDC = mvindex(pszLastOriginatingDsaDN, 1, 1) | table _time, Name, pszAttributeName, dwVersion, OriginatingDC | sort -_time</query>
+          <earliest>0</earliest>
+          <latest></latest>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">cell</option>
+        <format type="color" field="dwVersion">
+          <colorPalette type="minMidMax" maxColor="#006D9C" minColor="#FFFFFF"></colorPalette>
+          <scale type="minMidMax"></scale>
+        </format>
+        <format type="color" field="OriginatingDC">
+          <colorPalette type="sharedList"></colorPalette>
+          <scale type="sharedCategory"></scale>
+        </format>
+        <drilldown>
+          <link target="_blank">search?q=index=$ad_index$%20host=$domain_host$%20sourcetype=adtimeline%20(pszAttributeName=pwdLastSet%20OR%20pszAttributeName=SamAccountName%20OR%20pszAttributeName=userAccountControl%20OR%20pszAttributeName=lockoutTime%20OR%20pszAttributeName=LastlogonTimestamp)%20%20%5Bsearch%20index=$ad_index$%20host=$domain_host$%20sourcetype=adobjects%20%20ObjectClass%20=%20%22DomainDNS%22%20%7C%20strcat%20SID%20%22-500%22%20SID%20%7C%20table%20SID%5D%20%7C%20%20makemv%20pszLastOriginatingDsaDN%20delim=%22,CN=%22%20%7C%20eval%20OriginatingDC%20=%20mvindex(pszLastOriginatingDsaDN,%201,%201)&amp;earliest=0&amp;latest=</link>
+        </drilldown>
+      </table>
+      <single id="guest">
+        <title>Guest account (RID 501):</title>
+        <search>
+          <query>index=$ad_index$ host=$domain_host$ sourcetype=adobjects [search index=$ad_index$ host=$domain_host$ sourcetype=adobjects  ObjectClass = "DomainDNS" | strcat SID "-501" SID | table SID]  | eval UACmodulo4 = (userAccountControl%4) | eval Status = if( UACmodulo4 &gt;=2,"Guest account is disabled","Guest account is enabled") | stats by Status, UACmodulo4 |  rangemap field=UACmodulo4 severe=0-1 default=low</query>
+          <earliest>$earliest$</earliest>
+          <latest>$latest$</latest>
+        </search>
+        <option name="drilldown">all</option>
+        <option name="height">50</option>
+        <option name="refresh.display">progressbar</option>
+        <drilldown>
+          <link target="_blank">search?q=index=$ad_index$%20host=$domain_host$%20%20(sourcetype=adobjects%20OR%20sourcetype=adtimeline)%20%5Bsearch%20index=$ad_index$%20host=$domain_host$%20sourcetype=adobjects%20%20ObjectClass%20=%20%22DomainDNS%22%20%7C%20strcat%20SID%20%22-501%22%20SID%20%7C%20table%20SID%5D&amp;earliest=$earliest$&amp;latest=$latest$</link>
+        </drilldown>
+      </single>
+      <table>
+        <search>
+          <query>index=$ad_index$ host=$domain_host$ sourcetype=adtimeline (pszAttributeName=pwdLastSet OR pszAttributeName=SamAccountName OR pszAttributeName=userAccountControl OR pszAttributeName=LastlogonTimestamp)  [search index=$ad_index$ host=$domain_host$ sourcetype=adobjects  ObjectClass = "DomainDNS" | strcat SID "-501" SID | table SID] |  makemv pszLastOriginatingDsaDN delim=",CN=" | eval OriginatingDC = mvindex(pszLastOriginatingDsaDN, 1, 1) | table _time, Name, pszAttributeName, dwVersion, OriginatingDC | sort -_time</query>
+          <earliest>0</earliest>
+          <latest></latest>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">cell</option>
+        <format type="color" field="dwVersion">
+          <colorPalette type="minMidMax" maxColor="#006D9C" minColor="#FFFFFF"></colorPalette>
+          <scale type="minMidMax"></scale>
+        </format>
+        <format type="color" field="OriginatingDC">
+          <colorPalette type="sharedList"></colorPalette>
+          <scale type="sharedCategory"></scale>
+        </format>
+        <drilldown>
+          <link target="_blank">search?q=index=$ad_index$%20host=$domain_host$%20sourcetype=adtimeline%20(pszAttributeName=pwdLastSet%20OR%20pszAttributeName=SamAccountName%20OR%20pszAttributeName=userAccountControl%20OR%20pszAttributeName=LastlogonTimestamp)%20%20%5Bsearch%20index=$ad_index$%20host=$domain_host$%20sourcetype=adobjects%20%20ObjectClass%20=%20%22DomainDNS%22%20%7C%20strcat%20SID%20%22-501%22%20SID%20%7C%20table%20SID%5D%20%7C%20%20makemv%20pszLastOriginatingDsaDN%20delim=%22,CN=%22%20%7C%20eval%20OriginatingDC%20=%20mvindex(pszLastOriginatingDsaDN,%201,%201)&amp;earliest=0&amp;latest=</link>
+        </drilldown>
+      </table>
+      <html tokens="true" encoded="true">
+        <![CDATA[
+          <br/>
+          ]]>
+      </html>
+      <single id="Krbtgt">
+        <title>Krbtgt account:</title>
+        <search>
+          <query>index=$ad_index$ host=$domain_host$  sourcetype=adtimeline pszAttributeName=pwdLastSet [search index=$ad_index$ host=$domain_host$ sourcetype=adobjects  ObjectClass = "DomainDNS" | strcat SID "-502" SID | table SID] | stats min(_time) as mintime,  values(dwVersion) as version | eval diff = (now() - mintime) / 86400 | eval freq = diff / version  | eval frequency=case(freq &gt;= 730, "Krbtgt password is changed in average less than every two years", freq &gt;= 365 , "Krbtgt password is changed in average less than every one year", 1=1, "Krbtgt password is changed in average at least every year") | stats count by frequency, freq | rangemap field=freq low=1-364 elevated=365-729 default=severe</query>
+          <earliest>$earliest$</earliest>
+          <latest>$latest$</latest>
+        </search>
+        <option name="drilldown">all</option>
+        <option name="height">50</option>
+        <option name="refresh.display">progressbar</option>
+        <drilldown>
+          <link target="_blank">search?q=index=$ad_index$%20host=$domain_host$%20%20(sourcetype=adobjects%20OR%20sourcetype=adtimeline)%20%5Bsearch%20index=$ad_index$%20host=$domain_host$%20sourcetype=adobjects%20%20ObjectClass%20=%20%22DomainDNS%22%20%7C%20strcat%20SID%20%22-502%22%20SID%20%7C%20table%20SID%5D&amp;earliest=$earliest$&amp;latest=$latest$</link>
+        </drilldown>
+      </single>
+      <table>
+        <search>
+          <query>index=$ad_index$ host=$domain_host$ sourcetype=adtimeline pszAttributeName=pwdLastSet  [search index=$ad_index$ host=$domain_host$ sourcetype=adobjects  ObjectClass = "DomainDNS" | strcat SID "-502" SID | table SID] |  makemv pszLastOriginatingDsaDN delim=",CN=" | eval OriginatingDC = mvindex(pszLastOriginatingDsaDN, 1, 1) |  table _time, Name, pszAttributeName, dwVersion, OriginatingDC</query>
+          <earliest>0</earliest>
+          <latest></latest>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">cell</option>
+        <format type="color" field="dwVersion">
+          <colorPalette type="map">{"1":#DC4E41,"2":#DC4E41,"3":#DC4E41}</colorPalette>
+        </format>
+        <drilldown>
+          <link target="_blank">search?q=index=$ad_index$%20host=$domain_host$%20sourcetype=adtimeline%20pszAttributeName=pwdLastSet%20%20%5Bsearch%20index=$ad_index$%20host=$domain_host$%20sourcetype=adobjects%20%20ObjectClass%20=%20%22DomainDNS%22%20%7C%20strcat%20SID%20%22-502%22%20SID%20%7C%20table%20SID%5D%20%7C%20%20makemv%20pszLastOriginatingDsaDN%20delim=%22,CN=%22%20%7C%20eval%20OriginatingDC%20=%20mvindex(pszLastOriginatingDsaDN,%201,%201)&amp;earliest=0&amp;latest=</link>
+        </drilldown>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Accounts sensitive to AS-REP Roast attacks:</title>
+      <chart rejects="$show_html_asreproast1$">
+        <title>Ratio of AS-REProastable accounts being privileged in the domain, userAccountControl and adminCount attributes:</title>
+        <search>
+          <query>index=$ad_index$ host=$domain_host$ sourcetype=adobjects  (ObjectClass = "user" OR ObjectClass = "inetOrgPerson")  |  eval eval_asrep_bit = floor(userAccountControl / pow(2, 22)) %2 | search eval_asrep_bit = 1  | fillnull value="notset" adminCount  | stats count as "Admincount ratio for users with DONT_REQ_PREAUTH flag" by adminCount</query>
+          <earliest>$earliest$</earliest>
+          <latest>$latest$</latest>
+          <progress>
+            <condition match="$job.resultCount$ == 0">
+              <set token="show_html_asreproast1">toto</set>
+            </condition>
+            <condition>
+              <unset token="show_html_asreproast1"></unset>
+            </condition>
+          </progress>
+        </search>
+        <option name="charting.axisTitleX.visibility">visible</option>
+        <option name="charting.axisTitleY.visibility">visible</option>
+        <option name="charting.axisTitleY2.visibility">visible</option>
+        <option name="charting.chart">pie</option>
+        <option name="charting.chart.rangeValues">[0,4,4.1,7]</option>
+        <option name="charting.chart.style">shiny</option>
+        <option name="charting.fieldColors">{"1":0xFF0000}</option>
+        <option name="charting.gaugeColors">["0xdc4e41","0xf8be34","0x53a051"]</option>
+        <option name="charting.legend.placement">right</option>
+        <option name="height">236</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="trellis.enabled">0</option>
+        <option name="trellis.size">medium</option>
+        <option name="trellis.splitBy">Name</option>
+        <drilldown>
+          <link target="_blank">search?q=index=$ad_index$%20host=$domain_host$%20sourcetype=adobjects%20%20(ObjectClass%20=%20%22user%22%20OR%20ObjectClass%20=%20%22inetOrgPerson%22)%20%20%7C%20%20eval%20eval_asrep_bit%20=%20floor(userAccountControl%20/%20pow(2,%2022))%20%252%20%7C%20search%20eval_asrep_bit%20=%201%20%20%7C%20fillnull%20value=%22notset%22%20adminCount%20%20%7C%20search%20$click.name$%20=%20%22$click.value$%22&amp;earliest=$earliest$&amp;latest=$latest$</link>
+        </drilldown>
+      </chart>
+      <html depends="$show_html_asreproast1$">
+         <p style="font-weight: bold !important;font-size:14px">Ratio of AS-REProastable accounts being privileged in the domain, userAccountControl and adminCount attributes: No results</p>
+      </html>
+      <table rejects="$show_html_asreproast2$">
+        <title>AS-REP Roast accounts inventory:</title>
+        <search>
+          <progress>
+            <condition match="$job.resultCount$ == 0">
+              <set token="show_html_asreproast2">toto</set>
+            </condition>
+            <condition>
+              <unset token="show_html_asreproast2"></unset>
+            </condition>
+          </progress>
+          <query>index=$ad_index$ host=$domain_host$ sourcetype=adobjects  (ObjectClass = "user" OR ObjectClass = "inetOrgPerson")   |  eval eval_asrep_bit = floor(userAccountControl / pow(2, 22)) %2 | search eval_asrep_bit = 1 | fillnull value="notset" adminCount  | eval status = if((userAccountControl%4)&gt;=2,"disabled","enabled")  | eval lastlogon_timestamp = strftime(lastLogonTimestamp/10000000 - 11644473600, "%Y-%m-%dT%H:%M:%S") | table DN, status, adminCount, lastlogon_timestamp, whenCreated | sort -lastlogon_timestamp</query>
+          <earliest>0</earliest>
+          <latest></latest>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">cell</option>
+        <option name="refresh.display">progressbar</option>
+        <format type="color" field="adminCount">
+          <colorPalette type="map">{"0":#A1D379,"1":#D98491,"notset":#A1D379}</colorPalette>
+        </format>
+        <format type="color" field="status">
+          <colorPalette type="map">{"enabled":#A1D379,"disabled":#F8BE34}</colorPalette>
+        </format>
+        <drilldown>
+          <link target="_blank">search?q=index=$ad_index$%20host=$domain_host$%20sourcetype=adobjects%20%20(ObjectClass%20=%20%22user%22%20OR%20ObjectClass%20=%20%22inetOrgPerson%22)%20%20%20%7C%20%20eval%20eval_asrep_bit%20=%20floor(userAccountControl%20/%20pow(2,%2022))%20%252%20%7C%20search%20eval_asrep_bit%20=%201%20%20%7C%20fillnull%20value=%22notset%22%20adminCount%20%20%7C%20eval%20status%20=%20if((userAccountControl%254)%3E=2,%22disabled%22,%22enabled%22)%20%20%7C%20eval%20lastlogon_timestamp%20=%20strftime(lastLogonTimestamp/10000000%20-%2011644473600,%20%22%25Y-%25m-%25dT%25H:%25M:%25S%22)%20%0A%7C%20search%20$click.name2$%20=%20%22$click.value2$%22&amp;earliest=0&amp;latest=</link>
+        </drilldown>
+      </table>
+      <html depends="$show_html_asreproast2$">
+         <p style="font-weight: bold !important;font-size:14px">AS-REP Roast accounts inventory: No results</p>
+      </html>
+    </panel>
+    <panel>
+      <title>Kerberos delegation:</title>
+      <chart rejects="$show_html_deleg1$">
+        <title>Ratio of accounts trusted for unconstrained/constrained delagation, userAccountControl attribute:</title>
+        <search>
+          <query>index=$ad_index$  host=$domain_host$  sourcetype=adobjects  (ObjectClass = "user" OR ObjectClass = "inetOrgPerson" OR ObjectClass = "Computer")   |  eval eval_deleg_bit = floor(userAccountControl / pow(2, 19)) %2 | eval eval_cdeleg_bit = floor(userAccountControl / pow(2, 24)) %2  | search (eval_cdeleg_bit=1 OR eval_deleg_bit = 1 ) |  eval eval_dc_bit = floor(userAccountControl / pow(2, 13)) %2 | eval eval_rodc_bit = floor(userAccountControl / pow(2, 26)) %2 | search eval_dc_bit = 0 AND eval_rodc_bit = 0 | eval DelegType =case(eval_cdeleg_bit == 1, "Account trusted for constrainded delegation", eval_deleg_bit == 1  , "Account trusted for unconstrainded delegation") |  stats count as "Delegation type ratio" by DelegType</query>
+          <earliest>$earliest$</earliest>
+          <latest>$latest$</latest>
+          <progress>
+            <condition match="$job.resultCount$ == 0">
+              <set token="show_html_deleg1">toto</set>
+            </condition>
+            <condition>
+              <unset token="show_html_deleg1"></unset>
+            </condition>
+          </progress>
+        </search>
+        <option name="charting.axisTitleX.visibility">visible</option>
+        <option name="charting.axisTitleY.visibility">visible</option>
+        <option name="charting.axisTitleY2.visibility">visible</option>
+        <option name="charting.chart">pie</option>
+        <option name="charting.chart.rangeValues">[0,4,4.1,7]</option>
+        <option name="charting.chart.style">shiny</option>
+        <option name="charting.fieldColors">{"Account trusted for unconstrainded delegation":0xFF0000}</option>
+        <option name="charting.gaugeColors">["0xdc4e41","0xf8be34","0x53a051"]</option>
+        <option name="charting.legend.placement">right</option>
+        <option name="height">236</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="trellis.enabled">0</option>
+        <option name="trellis.size">medium</option>
+        <option name="trellis.splitBy">Name</option>
+        <drilldown>
+          <link target="_blank">search?q=index=$ad_index$%20%20host=$domain_host$%20%20sourcetype=adobjects%20%20(ObjectClass%20=%20%22user%22%20OR%20ObjectClass%20=%20%22inetOrgPerson%22%20OR%20ObjectClass%20=%20%22Computer%22)%20%20%20%7C%20%20eval%20eval_deleg_bit%20=%20floor(userAccountControl%20/%20pow(2,%2019))%20%252%20%7C%20eval%20eval_cdeleg_bit%20=%20floor(userAccountControl%20/%20pow(2,%2024))%20%252%20%20%7C%20search%20(eval_cdeleg_bit=1%20OR%20eval_deleg_bit%20=%201%20)%20%7C%20%20eval%20eval_dc_bit%20=%20floor(userAccountControl%20/%20pow(2,%2013))%20%252%20%7C%20eval%20eval_rodc_bit%20=%20floor(userAccountControl%20/%20pow(2,%2026))%20%252%20%7C%20search%20eval_dc_bit%20=%200%20AND%20eval_rodc_bit%20=%200%20%7C%20eval%20DelegType%20=case(eval_cdeleg_bit%20==%201,%20%22Account%20trusted%20for%20constrainded%20delegation%22,%20eval_deleg_bit%20==%201%20%20,%20%22Account%20trusted%20for%20unconstrainded%20delegation%22)%20%7C%20search%20$click.name$%20=%20%22$click.value$%22&amp;earliest=$earliest$&amp;latest=$latest$</link>
+        </drilldown>
+      </chart>
+      <html depends="$show_html_deleg1$">
+         <p style="font-weight: bold !important;font-size:14px">Ratio of accounts trusted for unconstrained/constrained delagation, userAccountControl attribute: No results</p>
+      </html>
+      <table rejects="$show_html_deleg2$">
+        <title>Accounts trusted for unconstrained delegation inventory, userAccountControl attribute:</title>
+        <search>
+          <query>index=$ad_index$ host=$domain_host$ sourcetype=adobjects  (ObjectClass = "user" OR ObjectClass = "inetOrgPerson" OR ObjectClass = "Computer")   |  eval eval_deleg_bit = floor(userAccountControl / pow(2, 19)) %2  | search  eval_deleg_bit = 1 | eval eval_dc_bit = floor(userAccountControl / pow(2, 13)) %2 |  eval eval_rodc_bit = floor(userAccountControl / pow(2, 26)) %2 | search eval_dc_bit = 0 AND eval_rodc_bit = 0  | eval Status = if((userAccountControl%4)&gt;=2,"disabled","enabled") | eval Status = if((userAccountControl%4)&gt;=2,"disabled","enabled")  |   eval lastlogon_timestamp = strftime(lastLogonTimestamp/10000000 - 11644473600, "%Y-%m-%dT%H:%M:%S") | table DN, ObjectClass, Status, lastlogon_timestamp, whenCreated</query>
+          <earliest>0</earliest>
+          <latest></latest>
+          <progress>
+            <condition match="$job.resultCount$ == 0">
+              <set token="show_html_deleg2">toto</set>
+            </condition>
+            <condition>
+              <unset token="show_html_deleg2"></unset>
+            </condition>
+          </progress>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">cell</option>
+        <format type="color" field="Status">
+          <colorPalette type="map">{"enabled":#A1D379,"disabled":#F8BE34}</colorPalette>
+        </format>
+        <drilldown>
+          <link target="_blank">search?q=index=$ad_index$%20host=$domain_host$%20sourcetype=adobjects%20%20(ObjectClass%20=%20%22user%22%20OR%20ObjectClass%20=%20%22inetOrgPerson%22%20OR%20ObjectClass%20=%20%22Computer%22)%20%20%20%7C%20%20eval%20eval_deleg_bit%20=%20floor(userAccountControl%20/%20pow(2,%2019))%20%252%20%20%7C%20search%20%20eval_deleg_bit%20=%201%20%7C%20eval%20eval_dc_bit%20=%20floor(userAccountControl%20/%20pow(2,%2013))%20%252%20%7C%20%20eval%20eval_rodc_bit%20=%20floor(userAccountControl%20/%20pow(2,%2026))%20%252%20%7C%20search%20eval_dc_bit%20=%200%20AND%20eval_rodc_bit%20=%200%20%20%7C%20eval%20Status%20=%20if((userAccountControl%254)%3E=2,%22disabled%22,%22enabled%22)%20%7C%20eval%20Status%20=%20if((userAccountControl%254)%3E=2,%22disabled%22,%22enabled%22)%20%20%7C%20%20%20eval%20lastlogon_timestamp%20=%20strftime(lastLogonTimestamp/10000000%20-%2011644473600,%20%22%25Y-%25m-%25dT%25H:%25M:%25S%22)%20%7C%20search%20$click.name2$%20=%20%22$click.value2$%22&amp;earliest=0&amp;latest=</link>
+        </drilldown>
+      </table>
+      <html depends="$show_html_deleg2$">
+         <p style="font-weight: bold !important;font-size:14px">Accounts trusted for unconstrained delegation inventory, userAccountControl attribute: No results</p>
+      </html>
+      <table rejects="$show_html_deleg3$">
+        <title>Accounts trusted for constrained delegation inventory, userAccountControl attribute:</title>
+        <search>
+          <query>index=$ad_index$ host=$domain_host$  sourcetype=adobjects  (ObjectClass = "user" OR ObjectClass = "inetOrgPerson" OR ObjectClass = "Computer") | eval eval_cdeleg_bit = floor(userAccountControl / pow(2, 24)) %2 | search eval_cdeleg_bit=1 | eval eval_rodc_bit = floor(userAccountControl / pow(2, 26)) %2 
+| search eval_rodc_bit = 0 
+|  rex "(?ms)msDS-AllowedToDelegateTo.{1,100}&lt;LST&gt;(?&lt;AllowedToDelegateTotmp&gt;.*?)&lt;/LST&gt;" | eval AllowedToDelegateTo= replace(AllowedToDelegateTotmp, "(&lt;(.|)S&gt;|[\\nr])" , "") | eval Status = if((userAccountControl%4)&gt;=2,"disabled","enabled")  |   eval lastlogon_timestamp = strftime(lastLogonTimestamp/10000000 - 11644473600, "%Y-%m-%dT%H:%M:%S") | table  DN, ObjectClass, AllowedToDelegateTo, Status, lastlogon_timestamp, whenCreated</query>
+          <earliest>0</earliest>
+          <latest></latest>
+          <progress>
+            <condition match="$job.resultCount$ == 0">
+              <set token="show_html_deleg3">toto</set>
+            </condition>
+            <condition>
+              <unset token="show_html_deleg3"></unset>
+            </condition>
+          </progress>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">cell</option>
+        <format type="color" field="Status">
+          <colorPalette type="map">{"enabled":#A1D379,"disabled":#F8BE34}</colorPalette>
+        </format>
+        <drilldown>
+          <link target="_blank">search?q=index=$ad_index$%20host=$domain_host$%20%20sourcetype=adobjects%20%20(ObjectClass%20=%20%22user%22%20OR%20ObjectClass%20=%20%22inetOrgPerson%22%20OR%20ObjectClass%20=%20%22Computer%22)%20%7C%20eval%20eval_cdeleg_bit%20=%20floor(userAccountControl%20/%20pow(2,%2024))%20%252%20%7C%20search%20eval_cdeleg_bit=1%20%7C%20eval%20eval_rodc_bit%20=%20floor(userAccountControl%20/%20pow(2,%2026))%20%252%20%0A%7C%20search%20eval_rodc_bit%20=%200%20%0A%7C%20%20rex%20%22(%3Fms)msDS-AllowedToDelegateTo.%7B1,100%7D%3CLST%3E(%3F%3CAllowedToDelegateTotmp%3E.%2A%3F)%3C/LST%3E%22%20%7C%20eval%20AllowedToDelegateTo=%20replace(AllowedToDelegateTotmp,%20%22(%3C(.%7C)S%3E%7C%5B%5C%5Cnr%5D)%22%20,%20%22%22)%20%7C%20eval%20Status%20=%20if((userAccountControl%254)%3E=2,%22disabled%22,%22enabled%22)%20%20%7C%20%20%20eval%20lastlogon_timestamp%20=%20strftime(lastLogonTimestamp/10000000%20-%2011644473600,%20%22%25Y-%25m-%25dT%25H:%25M:%25S%22)%20%7C%20search%20$click.name2$%20=%20%22$click.value2$%22&amp;earliest=0&amp;latest=</link>
+        </drilldown>
+      </table>
+      <html depends="$show_html_deleg3$">
+         <p style="font-weight: bold !important;font-size:14px">Accounts trusted for constrained delegation inventory, userAccountControl attribute: No results</p>
+      </html>
+      <table rejects="$show_html_deleg4$">
+        <title>Resource based constrained delegation inventory, msDS-AllowedToActOnBehalfOfOtherIdentity attribute:</title>
+        <search>
+          <progress>
+            <condition match="$job.resultCount$ == 0">
+              <set token="show_html_deleg4">toto</set>
+            </condition>
+            <condition>
+              <unset token="show_html_deleg4"></unset>
+            </condition>
+          </progress>
+          <query>index=$ad_index$ host=$domain_host$ sourcetype="adobjects" (ObjectClass = "user" OR ObjectClass = "inetOrgPerson" OR ObjectClass = "Computer")  |  rex "(?ms)msDS-AllowedToActOnBehalfOfOtherIdentity.{1,1500}&lt;MS&gt;(?&lt;AllowedToActOnBehalftmp&gt;.*?)&lt;/MS&gt;" 
+|  rex field=AllowedToActOnBehalftmp "AccessToString\"&gt;(?&lt;AccountAllowedToActOnBehalf&gt;.+)&lt;/S&gt;"  
+|  search AccountAllowedToActOnBehalf = "*" 
+|  eval Status = if((userAccountControl%4)&gt;=2,"disabled","enabled") | fillnull value="notset" adminCount | table DN, AccountAllowedToActOnBehalf, Status, adminCount</query>
+          <earliest>0</earliest>
+          <latest></latest>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">cell</option>
+        <option name="refresh.display">progressbar</option>
+        <format type="color" field="adminCount">
+          <colorPalette type="map">{"1":#D98491,"notset":#A1D379,"0":#A1D379}</colorPalette>
+        </format>
+        <format type="color" field="Status">
+          <colorPalette type="map">{"enabled":#A1D379,"disabled":#F8BE34}</colorPalette>
+        </format>
+        <drilldown>
+          <link target="_blank">search?q=index=$ad_index$%20host=$domain_host$%20sourcetype=%22adobjects%22%20(ObjectClass%20=%20%22user%22%20OR%20ObjectClass%20=%20%22inetOrgPerson%22%20OR%20ObjectClass%20=%20%22Computer%22)%20%20%7C%20%20rex%20%22(%3Fms)msDS-AllowedToActOnBehalfOfOtherIdentity.%7B1,1500%7D%3CMS%3E(%3F%3CAllowedToActOnBehalftmp%3E.%2A%3F)%3C/MS%3E%22%20%0A%7C%20%20rex%20field=AllowedToActOnBehalftmp%20%22AccessToString%5C%22%3E(%3F%3CAccountAllowedToActOnBehalf%3E.%2B)%3C/S%3E%22%20%20%0A%7C%20%20search%20AccountAllowedToActOnBehalf%20=%20%22*%22%20%0A%7C%20%20eval%20Status%20=%20if((userAccountControl%254)%3E=2,%22disabled%22,%22enabled%22)%20%7C%20fillnull%20value=%22notset%22%20adminCount%20%7C%20search%20$click.name2$%20=%20%22$click.value2$%22&amp;earliest=0&amp;latest=</link>
+        </drilldown>
+      </table>
+      <html depends="$show_html_deleg4$">
+         <p style="font-weight: bold !important;font-size:14px">Resource based constrained delegation inventory, msDS-AllowedToActOnBehalfOfOtherIdentity attribute: No results</p>
+      </html>
+    </panel>
+  </row>
+</form>

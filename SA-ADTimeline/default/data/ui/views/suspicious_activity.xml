@@ -1,0 +1,688 @@
+<form>
+  <label>Track suspicious activity</label>
+  <search>
+    <query>index=$ad_index$ host=$domain_host$ sourcetype=adtimeline  | where usnLocalChange = usnOriginatingChange | stats earliest(_time) as firstevent | fields firstevent</query>
+    <earliest>0</earliest>
+    <latest></latest>
+    <done>
+      <set token="Dcinstall">$result.firstevent$</set>
+    </done>
+  </search>
+  <fieldset submitButton="false"></fieldset>
+  <row>
+    <panel>
+      <input type="dropdown" token="ad_index" searchWhenChanged="true">
+        <label>Choose index to process:</label>
+        <search>
+          <query>| tstats latest(_time) where index=*  by index</query>
+        </search>
+        <selectFirstChoice>true</selectFirstChoice>
+        <fieldForLabel>index</fieldForLabel>
+        <fieldForValue>index</fieldForValue>
+      </input>
+      <input type="dropdown" token="domain_host" searchWhenChanged="true">
+        <label>Choose AD Domain to process:</label>
+        <search>
+          <query>| tstats latest(_time) where index=$ad_index$ (sourcetype=adobjects OR sourcetype=gcobjects OR sourcetype=adtimeline)  by host</query>
+        </search>
+        <selectFirstChoice>true</selectFirstChoice>
+        <fieldForLabel>host</fieldForLabel>
+        <fieldForValue>host</fieldForValue>
+      </input>
+    </panel>
+    <panel>
+      <html>
+      <p style="text-align:center;">
+          <img src="/static/app/SA-ADTimeline/images/logo.png"/>
+        </p>
+      </html>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>ACL modifications</title>
+      <chart>
+        <title>ACL modifications performed one year back, stats by ObjectClass per week:</title>
+        <search>
+          <query>index=$ad_index$ host=$domain_host$ sourcetype=adtimeline pszAttributeName="nTSecurityDescriptor"  dwVersion &gt;= 2 | eval ObjectClass=if(ObjectClass=="System.DirectoryServices.ResultPropertyValueCollection","GCobject_ObjectClassNA",ObjectClass) | timechart span=1w count by ObjectClass limit=0</query>
+          <earliest>-1y</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="charting.axisTitleX.visibility">visible</option>
+        <option name="charting.axisTitleY.visibility">visible</option>
+        <option name="charting.axisTitleY2.visibility">visible</option>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.rangeValues">[0,4,4.1,7]</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.chart.style">shiny</option>
+        <option name="charting.drilldown">all</option>
+        <option name="charting.gaugeColors">["0xdc4e41","0xf8be34","0x53a051"]</option>
+        <option name="charting.legend.placement">right</option>
+        <option name="height">236</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="trellis.enabled">0</option>
+        <option name="trellis.size">medium</option>
+        <option name="trellis.splitBy">Name</option>
+        <drilldown>
+          <eval token="drilldown.earliest">if(isnull($row._time$),1,$row._time$)</eval>
+          <eval token="drilldown.latest">if(isnull($row._time$),now(),$row._time$ + $row._span$)</eval>
+          <link target="_blank">search?q=index=$ad_index$%20host=$domain_host$%20sourcetype=adtimeline%20pszAttributeName=%22nTSecurityDescriptor%22%20%20dwVersion%20%3E=%202%20%20%7C%20eval%20ObjectClass=if(ObjectClass==%22System.DirectoryServices.ResultPropertyValueCollection%22,%22GCobject_ObjectClassNA%22,ObjectClass)%0A%7C%20%20search%20%20ObjectClass%20=%20%22$click.name2$%22&amp;earliest=$drilldown.earliest$&amp;latest=$drilldown.latest$</link>
+        </drilldown>
+      </chart>
+      <table>
+        <title>ACL modifications on AdminSDHolder and DomainDNS object:</title>
+        <search>
+          <query>index=$ad_index$ host=$domain_host$ sourcetype=adtimeline pszAttributeName="nTSecurityDescriptor"  (ObjectClass = "DomainDNS" OR (Name= "AdminSDHolder" AND ObjectClass="container")) |  makemv pszLastOriginatingDsaDN delim=",CN=" | eval OriginatingDC = mvindex(pszLastOriginatingDsaDN, 1, 1) | table _time, Name, pszAttributeName, dwVersion, OriginatingDC</query>
+          <earliest>0</earliest>
+          <latest></latest>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">cell</option>
+        <format type="color" field="dwVersion">
+          <colorPalette type="minMidMax" maxColor="#006D9C" minColor="#FFFFFF"></colorPalette>
+          <scale type="minMidMax"></scale>
+        </format>
+        <drilldown>
+          <link target="_blank">search?q=index=$ad_index$%20host=$domain_host$%20((sourcetype=adtimeline%20AND%20pszAttributeName=%22nTSecurityDescriptor%22)%20OR%20sourcetype=adobjects)%20%20AND%20(ObjectClass%20=%20%22DomainDNS%22%20OR%20(Name=%20%22AdminSDHolder%22%20AND%20ObjectClass=%22container%22))%20%7C%20%20makemv%20pszLastOriginatingDsaDN%20delim=%22,CN=%22%20%7C%20eval%20OriginatingDC%20=%20mvindex(pszLastOriginatingDsaDN,%201,%201)&amp;earliest=0&amp;latest=</link>
+        </drilldown>
+      </table>
+      <table rejects="$show_html_acedomaindns$">
+        <title>User or computers accounts having an ACE on DomainDNS object:</title>
+        <search>
+          <progress>
+            <condition match="$job.resultCount$ == 0">
+              <set token="show_html_acedomaindns">toto</set>
+            </condition>
+            <condition>
+              <unset token="show_html_acedomaindns"></unset>
+            </condition>
+          </progress>
+          <query>index=$ad_index$ host=$domain_host$  sourcetype=adtimeline (ObjectCategory = "CN=Person,CN=Schema*"  OR ObjectCategory = "CN=Computer,CN=Schema*") [search index=$ad_index$ host=$domain_host$  sourcetype=adobjects  ObjectClass = "DomainDNS" | rex field=SDDL "(?&lt;Sid&gt;S-1-5-21-\d{8,10}-\d{8,10}-\d{8,10}-\d{4,10})" max_match=0  |  stats count by Sid | return 1000 $Sid] | stats count by DN, SID | table DN, SID</query>
+          <earliest>0</earliest>
+          <latest></latest>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">cell</option>
+        <option name="refresh.display">progressbar</option>
+        <drilldown>
+          <link target="_blank">search?q=index=$ad_index$%20host=$domain_host$%20%20((sourcetype=adtimeline%20OR%20sourcetype=adobjects%20OR%20sourcetype=gcobjects)%20AND%20(ObjectCategory%20=%20%22CN=Person,CN=Schema*%22%20%20OR%20ObjectCategory%20=%20%22CN=Computer,CN=Schema*%22))%20OR%20(sourcetype=adobjects%20%20AND%20ObjectClass%20=%20%22DomainDNS%22)%20%20%5Bsearch%20index=$ad_index$%20host=$domain_host$%20%20sourcetype=adobjects%20%20ObjectClass%20=%20%22DomainDNS%22%20%7C%20rex%20field=SDDL%20%22(%3F%3CSid%3ES-1-5-21-%5Cd%7B8,10%7D-%5Cd%7B8,10%7D-%5Cd%7B8,10%7D-%5Cd%7B4,10%7D)%22%20max_match=0%20%20%7C%20%20stats%20count%20by%20Sid%20%7C%20return%201000%20$Sid%5D%20%7C%20search%20$click.name2$%20=%20%22$click.value2$%22%20OR%20ObjectClass%20=%20%22DomainDNS%22&amp;earliest=0&amp;latest=</link>
+        </drilldown>
+      </table>
+      <html depends="$show_html_acedomaindns$">
+         <p style="font-weight: bold !important;font-size:14px">User or computers accounts having an ACE on DomainDNS object: No results</p>
+      </html>
+      <table rejects="$show_html_aceadminsd$">
+        <title>User or computers accounts having an ACE on AdminSDHolder object:</title>
+        <search>
+          <progress>
+            <condition match="$job.resultCount$ == 0">
+              <set token="show_html_aceadminsd">toto</set>
+            </condition>
+            <condition>
+              <unset token="show_html_aceadminsd"></unset>
+            </condition>
+          </progress>
+          <query>index=$ad_index$ host=$domain_host$  sourcetype=adtimeline (ObjectCategory = "CN=Person,CN=Schema*"  OR ObjectCategory = "CN=Computer,CN=Schema*") [search index=$ad_index$ host=$domain_host$  sourcetype=adobjects  (ObjectClass = "container" AND Name= "AdminSDHolder") |  rex field=SDDL "(?&lt;Sid&gt;S-1-5-21-\d{8,10}-\d{8,10}-\d{8,10}-\d{4,10})" max_match=0  |  stats count by Sid | return 1000 $Sid] | stats count by DN,SID | table DN,SID</query>
+          <earliest>0</earliest>
+          <latest></latest>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">cell</option>
+        <option name="refresh.display">progressbar</option>
+        <drilldown>
+          <link target="_blank">search?q=index=$ad_index$%20host=$domain_host$%20%20((sourcetype=adtimeline%20OR%20sourcetype=adobjects%20OR%20sourcetype=gcobjects)%20AND%20%20(ObjectCategory%20=%20%22CN=Person,CN=Schema*%22%20%20OR%20ObjectCategory%20=%20%22CN=Computer,CN=Schema*%22))%20OR%20(ObjectClass%20=%20%22container%22%20AND%20Name=%20%22AdminSDHolder%22)%20%5Bsearch%20index=$ad_index$%20host=$domain_host$%20%20sourcetype=adobjects%20%20(ObjectClass%20=%20%22container%22%20AND%20Name=%20%22AdminSDHolder%22)%20%7C%20%20rex%20field=SDDL%20%22(%3F%3CSid%3ES-1-5-21-%5Cd%7B8,10%7D-%5Cd%7B8,10%7D-%5Cd%7B8,10%7D-%5Cd%7B4,10%7D)%22%20max_match=0%20%20%7C%20%20stats%20count%20by%20Sid%20%7C%20return%201000%20$Sid%5D%20%7C%20search%20$click.name2$%20=%20%22$click.value2$%22%20OR%20ObjectClass%20=%20%22container%22&amp;earliest=0&amp;latest=</link>
+        </drilldown>
+      </table>
+      <html depends="$show_html_aceadminsd$">
+         <p style="font-weight: bold !important;font-size:14px">User or computers accounts having an ACE on AdminSDHolder object: No results</p>
+      </html>
+      <chart>
+        <title>ACL modifications by ObjectClass:</title>
+        <search>
+          <query>index=$ad_index$ host=$domain_host$ sourcetype=adtimeline pszAttributeName="nTSecurityDescriptor"  dwVersion &gt;= 2  | eval ObjectClass=if(ObjectClass=="System.DirectoryServices.ResultPropertyValueCollection","GCobject_ObjectClassNA",ObjectClass) | stats count by ObjectClass</query>
+          <earliest>0</earliest>
+          <latest></latest>
+        </search>
+        <option name="charting.chart">pie</option>
+        <option name="charting.drilldown">all</option>
+        <option name="refresh.display">progressbar</option>
+        <drilldown>
+          <link target="_blank">search?q=index=$ad_index$%20host=$domain_host$%20sourcetype=adtimeline%20pszAttributeName=%22nTSecurityDescriptor%22%20%20dwVersion%20%3E=%202%20%7C%20eval%20ObjectClass=if(ObjectClass==%22System.DirectoryServices.ResultPropertyValueCollection%22,%22GCobject_ObjectClassNA%22,ObjectClass)%20%7C%20search%20$click.name$%20=%20%22$click.value$%22&amp;earliest=0&amp;latest=</link>
+        </drilldown>
+      </chart>
+      <table>
+        <title>Least frequent object owners:</title>
+        <search>
+          <query>index=$ad_index$ host=$domain_host$  sourcetype=adobjects  | stats values(DN) count by Owner | where count &lt; 3 | sort count | table Owner, values(DN), count | rename values(DN) AS "Objects owned"</query>
+          <earliest>0</earliest>
+          <latest></latest>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">cell</option>
+        <drilldown>
+          <link target="_blank">search?q=index=$ad_index$%20host=$domain_host$%20%20sourcetype=adobjects%20%20%7C%20stats%20values(DN)%20count%20by%20Owner%20%7C%20where%20count%20%3C%203%20%7C%20sort%20count%20%7C%20table%20Owner,%20values(DN),%20count%20%7C%20rename%20values(DN)%20AS%20%22Objects%20owned%22&amp;earliest=0&amp;latest=</link>
+        </drilldown>
+      </table>
+    </panel>
+    <panel>
+      <title>User and computer accounts</title>
+      <chart rejects="$show_html_addedremoveddgrp$">
+        <title>Accounts added and removed from groups, frequency:</title>
+        <search>
+          <progress>
+            <condition match="$job.resultCount$ == 0">
+              <set token="show_html_addedremoveddgrp">toto</set>
+            </condition>
+            <condition>
+              <unset token="show_html_addedremoveddgrp"></unset>
+            </condition>
+          </progress>
+          <query>index=$ad_index$ host=$domain_host$ sourcetype=adtimeline ObjectClass="group" pszAttributeName="Member"  dwVersion != 0 | eval Test= if(dwVersion%2==0,"Even","odd") | search Test="Even" | stats count by dwVersion</query>
+          <earliest>0</earliest>
+          <latest></latest>
+        </search>
+        <option name="charting.chart">pie</option>
+        <option name="charting.drilldown">all</option>
+        <option name="refresh.display">progressbar</option>
+        <drilldown>
+          <link target="_blank">search?q=index=$ad_index$%20host=$domain_host$%20sourcetype=adtimeline%20ObjectClass=%22group%22%20pszAttributeName=%22Member%22%20dwVersion%20!=%200%20%20%7C%20eval%20Test=%20if(dwVersion%252==0,%22Even%22,%22odd%22)%20%7C%20search%20Test=%22Even%22%20%7C%20search%20$click.name$%20=%20%22$click.value$%22&amp;earliest=0&amp;latest=</link>
+        </drilldown>
+      </chart>
+      <html depends="$show_html_addedremoveddgrp$">
+         <p style="font-weight: bold !important;font-size:14px">Accounts added and removed from groups, frequency: No results</p>
+      </html>
+      <chart rejects="$show_html_addedremoveddgrptime$">
+        <title>Accounts added and removed from groups, membership time in days:</title>
+        <search>
+          <progress>
+            <condition match="$job.resultCount$ == 0">
+              <set token="show_html_addedremoveddgrptime">toto</set>
+            </condition>
+            <condition>
+              <unset token="show_html_addedremoveddgrptime"></unset>
+            </condition>
+          </progress>
+          <query>index=$ad_index$ host=$domain_host$ sourcetype=adtimeline ObjectClass="group" pszAttributeName="Member" dwVersion != 0  | eval Test= if(dwVersion%2==0,"Even","odd") | search Test="Even" | eval ftimeCreatedT = strptime(ftimeCreated, "%Y-%m-%dT%H:%M:%SZ") | eval ftimeDeletedT = if(ftimeDeleted=="1601-01-01T00:00:00Z", strptime(ftimeLastOriginatingChange,"%Y-%m-%dT%H:%M:%SZ"), strptime(ftimeDeleted, "%Y-%m-%dT%H:%M:%SZ")) | fillnull value=0 ftimeDeletedT | eval TimeDiff = floor((ftimeDeletedT - ftimeCreatedT) / 86400) | stats count by TimeDiff</query>
+          <earliest>0</earliest>
+          <latest></latest>
+        </search>
+        <option name="charting.chart">pie</option>
+        <option name="charting.drilldown">all</option>
+        <option name="refresh.display">progressbar</option>
+        <drilldown>
+          <link target="_blank">search?q=index=$ad_index$%20host=$domain_host$%20sourcetype=adtimeline%20ObjectClass=%22group%22%20pszAttributeName=%22Member%22%20dwVersion%20!=%200%20%20%7C%20eval%20Test=%20if(dwVersion%252==0,%22Even%22,%22odd%22)%20%7C%20search%20Test=%22Even%22%20%7C%20eval%20ftimeCreatedT%20=%20strptime(ftimeCreated,%20%22%25Y-%25m-%25dT%25H:%25M:%25SZ%22)%20%7C%20eval%20ftimeDeletedT%20%3D%20if(ftimeDeleted%3D%3D%221601-01-01T00%3A00%3A00Z%22%2C%20strptime(ftimeLastOriginatingChange%2C%22%25Y-%25m-%25dT%25H%3A%25M%3A%25SZ%22)%2C%20strptime(ftimeDeleted%2C%20%22%25Y-%25m-%25dT%25H%3A%25M%3A%25SZ%22))%20%7C%20fillnull%20value=0%20ftimeDeletedT%20%7C%20eval%20TimeDiff%20=%20floor((ftimeDeletedT%20-%20ftimeCreatedT)%20/%2086400)%20%7C%20search%20$click.name$%20=%20%22$click.value$%22&amp;earliest=0&amp;latest=</link>
+        </drilldown>
+      </chart>
+      <html depends="$show_html_addedremoveddgrptime$">
+         <p style="font-weight: bold !important;font-size:14px">Accounts added and removed from groups, membership time in days: No results</p>
+      </html>
+      <chart rejects="$show_html_addedremoveddgrpou$">
+        <title>Accounts added and removed from groups, member account OU:</title>
+        <search>
+          <progress>
+            <condition match="$job.resultCount$ == 0">
+              <set token="show_html_addedremoveddgrpou">toto</set>
+            </condition>
+            <condition>
+              <unset token="show_html_addedremoveddgrpou"></unset>
+            </condition>
+          </progress>
+          <query>index=$ad_index$ host=$domain_host$ sourcetype=adtimeline ObjectClass="group" pszAttributeName="Member" dwVersion != 0  | eval Test= if(dwVersion%2==0,"Even","odd") | search Test="Even" | makemv Member delim="," | eval Member_OU = mvjoin(mvindex(Member, 1, mvcount(Member)),",") | stats count by Member_OU</query>
+          <earliest>0</earliest>
+          <latest></latest>
+        </search>
+        <option name="charting.chart">pie</option>
+        <option name="charting.drilldown">all</option>
+        <option name="refresh.display">progressbar</option>
+        <drilldown>
+          <link target="_blank">search?q=index=$ad_index$%20host=$domain_host$%20sourcetype=adtimeline%20ObjectClass=%22group%22%20pszAttributeName=%22Member%22%20dwVersion%20!=%200%20%7C%20eval%20Test=%20if(dwVersion%252==0,%22Even%22,%22odd%22)%20%7C%20search%20Test=%22Even%22%20%7C%20makemv%20Member%20delim=%22,%22%20%7C%20eval%20Member_OU%20=%20mvjoin(mvindex(Member,%201,%20mvcount(Member)),%22,%22)%20%7C%20search%20$click.name$%20=%20%22$click.value$%22&amp;earliest=0&amp;latest=</link>
+        </drilldown>
+      </chart>
+      <html depends="$show_html_addedremoveddgrpou$">
+         <p style="font-weight: bold !important;font-size:14px">Accounts added and removed from groups, member account OU: No results</p>
+      </html>
+      <chart rejects="$show_html_lockout$">
+        <title>Account lockouts</title>
+        <search>
+          <query>index=$ad_index$ host=$domain_host$ sourcetype=adtimeline pszAttributeName="lockoutTime" | timechart  span=1week count by pszAttributeName limit=0</query>
+          <earliest>0</earliest>
+          <latest></latest>
+          <progress>
+            <condition match="$job.resultCount$ == 0">
+              <set token="show_html_lockout">toto</set>
+            </condition>
+            <condition>
+              <unset token="show_html_lockout"></unset>
+            </condition>
+          </progress>
+        </search>
+        <option name="charting.chart">column</option>
+        <option name="charting.drilldown">all</option>
+        <option name="refresh.display">progressbar</option>
+        <drilldown>
+          <eval token="drilldown.earliest">if(isnull($row._time$),1,$row._time$)</eval>
+          <eval token="drilldown.latest">if(isnull($row._time$),now(),$row._time$ + $row._span$)</eval>
+          <link target="_blank">search?q=index=$ad_index$%20host=$domain_host$%20sourcetype=adtimeline%20pszAttributeName=%22lockoutTime%22&amp;earliest=$drilldown.earliest$&amp;latest=$drilldown.latest$</link>
+        </drilldown>
+      </chart>
+      <table rejects="$show_html_lockout2$">
+        <title>Top 5 account lockouts</title>
+        <search>
+          <progress>
+            <condition match="$show_html_lockout2$ == 0">
+              <set token="show_html_lockout2">toto</set>
+            </condition>
+            <condition>
+              <unset token="show_html_lockout2"></unset>
+            </condition>
+          </progress>
+          <query>index=$ad_index$  host=$domain_host$  sourcetype=adtimeline pszAttributeName="lockoutTime" | sort -dwVersion | head 5 | table _time, DN, dwVersion</query>
+          <earliest>0</earliest>
+          <latest></latest>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">cell</option>
+        <format type="color" field="dwVersion">
+          <colorPalette type="minMidMax" maxColor="#DC4E41" minColor="#FFFFFF"></colorPalette>
+          <scale type="minMidMax"></scale>
+        </format>
+        <drilldown>
+          <link target="_blank">search?q=index=$ad_index$%20%20host=$domain_host$%20%20sourcetype=adtimeline%20pszAttributeName=%22lockoutTime%22%20%7C%20sort%20-dwVersion%20%7C%20head%205%20%7C%20search%20$click.name2$%20=%20%22$click.value2$%22&amp;earliest=0&amp;latest=</link>
+        </drilldown>
+      </table>
+      <html depends="$show_html_lockout2$">
+         <p style="font-weight: bold !important;font-size:14px">Top 5 account lockouts: No results</p>
+      </html>
+      <html depends="$show_html_lockout$">
+         <p style="font-weight: bold !important;font-size:14px">Account lockouts: No results</p>
+      </html>
+      <chart rejects="$show_html_sid1$">
+        <title>SIDHistory and primaryGroupID editions</title>
+        <search>
+          <query>index=$ad_index$  host=$domain_host$ sourcetype=adtimeline pszAttributeName="SIDHistory"  OR (pszAttributeName="primaryGroupID" AND dwVersion &gt; 1 AND NOT DN = "*,OU=Domain Controllers,*") AND NOT (Name = "*DEL\:*" AND ObjectClass = "Computer") | timechart  span=1week count by pszAttributeName limit=0</query>
+          <earliest>0</earliest>
+          <latest></latest>
+          <progress>
+            <condition match="$job.resultCount$ == 0">
+              <set token="show_html_sid1">toto</set>
+            </condition>
+            <condition>
+              <unset token="show_html_sid1"></unset>
+            </condition>
+          </progress>
+        </search>
+        <option name="charting.chart">column</option>
+        <option name="charting.drilldown">all</option>
+        <option name="refresh.display">progressbar</option>
+        <drilldown>
+          <eval token="drilldown.earliest">if(isnull($row._time$),1,$row._time$)</eval>
+          <eval token="drilldown.latest">if(isnull($row._time$),now(),$row._time$ + $row._span$)</eval>
+          <link target="_blank">search?q=index=$ad_index$%20%20host=$domain_host$%20sourcetype=adtimeline%20pszAttributeName=%22SIDHistory%22%20%20OR%20(pszAttributeName=%22primaryGroupID%22%20AND%20dwVersion%20%3E%201%20AND%20NOT%20DN%20=%20%22*,OU=Domain%20Controllers,*%22)%20AND%20NOT%20(Name%20=%20%22*DEL%5C:*%22%20AND%20ObjectClass%20=%20%22Computer%22)%20%7C%20%20search%20%20pszAttributeName%20=%20%22$click.name2$%22&amp;earliest=$drilldown.earliest$&amp;latest=$drilldown.latest$</link>
+        </drilldown>
+      </chart>
+      <html depends="$show_html_sid1$">
+         <p style="font-weight: bold !important;font-size:14px">SIDHistory and primaryGroupID editions: No results</p>
+      </html>
+      <table rejects="$show_html_sid2$">
+        <title>Suspicious SIDHistory values</title>
+        <search>
+          <query>index=$ad_index$  host=$domain_host$  (sourcetype=adobjects AND (ObjectClass = "user" OR ObjectClass = "inetOrgPerson" OR ObjectClass = "Computer" OR ObjectClass = "Group")) OR sourcetype=gcobjects
+|  rex  "(?ms)sIDHistory.{1,100}&lt;LST&gt;(?&lt;SIDHistories&gt;.*?)&lt;/LST&gt;" | rex field=SIDHistories "(?&lt;Sid2&gt;(S-1-5-21-\d{8,10}-\d{8,10}-\d{8,10}-\d{3,10}|S-1-5-32-\d{3}))" max_match=0 
+| rex field=_raw "sidhistory\"&gt;(?&lt;SIDHistories&gt;.+?)&lt;/S&gt;"
+| rex field=SIDHistories "(?&lt;Sid1&gt;(S-1-5-21-\d{8,10}-\d{8,10}-\d{8,10}-\d{3,10}|S-1-5-32-\d{3}))" max_match=0 | eval sidHs = mvappend(Sid1,Sid2)
+|  dedup sidHs |  mvexpand sidHs 
+|  dedup sidHs
+|  rex field=SID "(?&lt;DomainSid&gt;S-1-5-21-\d{8,10}-\d{8,10}-\d{8,10})" 
+|  eval SuspiciousSIDHistory = if(like(sidHs,DomainSid."%") OR like(sidHs,"%-500")  OR like(sidHs,"%-518") OR like(sidHs,"%-498") OR like(sidHs,"%-519") OR like(sidHs,"%-512") OR like(sidHs,"%-516") OR sidHs="S-1-5-32-550" OR sidHs="S-1-5-32-549" OR sidHs="S-1-5-32-551" OR sidHs="S-1-5-32-544"  OR sidHs="S-1-5-32-548" ,sidHs,null)
+| search SuspiciousSIDHistory = "*" 
+|  join SID 
+    [search index=$ad_index$  host=$domain_host$  sourcetype=adtimeline pszAttributeName=sIDHistory 
+    | 
+    rename _time as LastSIDHistoryEditiontimeepoch |  fields LastSIDHistoryEditiontimeepoch, SID, dwVersion] 
+|  eval LastSIDHistoryEditiontime = strftime(LastSIDHistoryEditiontimeepoch,"%Y-%m-%d %H:%M:%S") 
+|  table LastSIDHistoryEditiontime, DN, SuspiciousSIDHistory, SID, dwVersion 
+    |  sort -LastSIDHistoryEditiontime</query>
+          <earliest>0</earliest>
+          <latest></latest>
+          <progress>
+            <condition match="$job.resultCount$ == 0">
+              <set token="show_html_sid2">toto</set>
+            </condition>
+            <condition>
+              <unset token="show_html_sid2"></unset>
+            </condition>
+          </progress>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">cell</option>
+        <format type="color" field="dwVersion">
+          <colorPalette type="minMidMax" maxColor="#006D9C" minColor="#FFFFFF"></colorPalette>
+          <scale type="minMidMax"></scale>
+        </format>
+        <format type="color" field="SuspiciousSIDHistory">
+          <colorPalette type="sharedList"></colorPalette>
+          <scale type="sharedCategory"></scale>
+        </format>
+        <format type="color" field="DN">
+          <colorPalette type="sharedList"></colorPalette>
+          <scale type="sharedCategory"></scale>
+        </format>
+        <drilldown>
+          <link target="_blank">search?q=index=$ad_index$%20%20host=$domain_host$%20%20(sourcetype=adobjects%20AND%20(ObjectClass%20=%20%22user%22%20OR%20ObjectClass%20=%20%22inetOrgPerson%22%20OR%20ObjectClass%20=%20%22Computer%22%20OR%20ObjectClass%20=%20%22Group%22))%20OR%20sourcetype=gcobjects%20%0A%7C%20%20rex%20%20%22(%3Fms)sIDHistory.%7B1,100%7D%3CLST%3E(%3F%3CSIDHistories%3E.%2A%3F)%3C/LST%3E%22%20%7C%20rex%20field=SIDHistories%20%22(%3F%3CSid2%3E(S-1-5-21-%5Cd%7B8,10%7D-%5Cd%7B8,10%7D-%5Cd%7B8,10%7D-%5Cd%7B3,10%7D%7CS-1-5-32-%5Cd%7B3%7D))%22%20max_match=0%20%0A%7C%20rex%20field=_raw%20%22sidhistory%5C%22%3E(%3F%3CSIDHistories%3E.%2B%3F)%3C/S%3E%22%0A%7C%20rex%20field=SIDHistories%20%22(%3F%3CSid1%3E(S-1-5-21-%5Cd%7B8,10%7D-%5Cd%7B8,10%7D-%5Cd%7B8,10%7D-%5Cd%7B3,10%7D%7CS-1-5-32-%5Cd%7B3%7D))%22%20max_match=0%20%7C%20eval%20sidHs%20=%20mvappend(Sid1,Sid2)%0A%7C%20%20dedup%20sidHs%20%7C%20%20mvexpand%20sidHs%20%0A%7C%20%20dedup%20sidHs%0A%7C%20%20rex%20field=SID%20%22(%3F%3CDomainSid%3ES-1-5-21-%5Cd%7B8,10%7D-%5Cd%7B8,10%7D-%5Cd%7B8,10%7D)%22%20%0A%7C%20%20eval%20SuspiciousSIDHistory%20=%20if(like(sidHs,DomainSid.%22%25%22)%20OR%20like(sidHs,%22%25-500%22)%20%20OR%20like(sidHs,%22%25-518%22)%20OR%20like(sidHs,%22%25-498%22)%20OR%20like(sidHs,%22%25-519%22)%20OR%20like(sidHs,%22%25-512%22)%20OR%20like(sidHs,%22%25-516%22)%20OR%20sidHs=%22S-1-5-32-550%22%20OR%20sidHs=%22S-1-5-32-549%22%20OR%20sidHs=%22S-1-5-32-551%22%20OR%20sidHs=%22S-1-5-32-544%22%20%20OR%20sidHs=%22S-1-5-32-548%22%20,sidHs,null)%0A%7C%20search%20SuspiciousSIDHistory%20=%20%22*%22%20%7C%20%20join%20SID%20%0A%20%20%20%20%5Bsearch%20index=$ad_index$%20%20host=$domain_host$%20%20sourcetype=adtimeline%20pszAttributeName=sIDHistory%20%0A%20%20%20%20%7C%20%0A%20%20%20%20rename%20_time%20as%20LastSIDHistoryEditiontimeepoch%20%7C%20%20fields%20LastSIDHistoryEditiontimeepoch,%20SID,%20dwVersion%5D%20%0A%7C%20%20eval%20LastSIDHistoryEditiontime%20=%20strftime(LastSIDHistoryEditiontimeepoch,%22%25Y-%25m-%25d%20%25H:%25M:%25S%22)%20%0A%7C%20search%20$click.name2$%20=%20%22$click.value2$%22&amp;earliest=0&amp;latest=</link>
+        </drilldown>
+      </table>
+      <html depends="$show_html_sid2$">
+         <p style="font-weight: bold !important;font-size:14px">Suspicious SIDHistory values: No results</p>
+      </html>
+      <table rejects="$show_html_pwdbd$">
+        <title>Possible password backdoor: Compare dBCSPwd LmPwdHistory ntPwdHistory unicodePwd and supplementalCredentials attributes modification date</title>
+        <search>
+          <query>index=$ad_index$  host=$domain_host$ sourcetype=adtimeline (ObjectClass="user" OR ObjectClass="inetOrgPerson" OR ObjectClass="Computer") (pszAttributeName="dBCSPwd"  OR pszAttributeName="lmPwdHistory" OR pszAttributeName="ntPwdHistory" OR pszAttributeName="unicodePwd" OR pszAttributeName="supplementalCredentials") AND NOT (Name = "*DEL\:*")  | makemv pszLastOriginatingDsaDN delim=",CN=" | eval OriginatingDC = mvindex(pszLastOriginatingDsaDN, 1, 1) |  bucket _time span=5m | stats list(pszAttributeName) count by _time, DN, OriginatingDC | search count &lt; 4 
+| rename list(pszAttributeName) AS "Attributes modified"</query>
+          <earliest>0</earliest>
+          <latest></latest>
+          <progress>
+            <condition match="$job.resultCount$ == 0">
+              <set token="show_html_pwdbd">toto</set>
+            </condition>
+            <condition>
+              <unset token="show_html_pwdbd"></unset>
+            </condition>
+          </progress>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">cell</option>
+        <format type="color" field="count">
+          <colorPalette type="minMidMax" maxColor="#FFFFFF" minColor="#DC4E41"></colorPalette>
+          <scale type="minMidMax"></scale>
+        </format>
+        <drilldown>
+          <link target="_blank">search?q=index=$ad_index$%20%20host=$domain_host$%20sourcetype=adtimeline%20(ObjectClass=%22user%22%20OR%20ObjectClass=%22inetOrgPerson%22%20OR%20ObjectClass=%22Computer%22)%20(pszAttributeName=%22dBCSPwd%22%20%20OR%20pszAttributeName=%22lmPwdHistory%22%20OR%20pszAttributeName=%22ntPwdHistory%22%20OR%20pszAttributeName=%22unicodePwd%22%20OR%20pszAttributeName=%22supplementalCredentials%22)%20AND%20NOT%20(Name%20=%20%22*DEL%5C:*%22)%20%20%7C%20makemv%20pszLastOriginatingDsaDN%20delim=%22,CN=%22%20%7C%20eval%20OriginatingDC%20=%20mvindex(pszLastOriginatingDsaDN,%201,%201)%20%7C%20%20bucket%20_time%20span=5m%20%7C%20stats%20list(pszAttributeName)%20count%20by%20_time,%20DN,%20OriginatingDC%20%0A%7C%20rename%20list(pszAttributeName)%20AS%20%22Attributes%20modified%22%20%0A%7C%20search%20$click.name2$%20=%20%22$click.value2$%22&amp;earliest=0&amp;latest=</link>
+        </drilldown>
+      </table>
+      <html depends="$show_html_pwdbd$">
+         <p style="font-weight: bold !important;font-size:14px">Possible password backdoor: No results</p>
+      </html>
+      <table rejects="$show_html_rbcd$">
+        <title>Resource based constrained delegation on privileged account or Domain Controller: msDS-AllowedToActOnBehalfOfOtherIdentity attribute</title>
+        <search>
+          <progress>
+            <condition match="$job.resultCount$ == 0">
+              <set token="show_html_rbcd">toto</set>
+            </condition>
+            <condition>
+              <unset token="show_html_rbcd"></unset>
+            </condition>
+          </progress>
+          <query>index=$ad_index$ host=$domain_host$ sourcetype=adtimeline  pszAttributeName = "msDS-AllowedToActOnBehalfOfOtherIdentity"  [search index=$ad_index$ host=$domain_host$ sourcetype=adobjects  (ObjectClass = "user" OR ObjectClass = "inetOrgPerson" OR ObjectClass = "Computer")  |  eval eval_dc_bit = floor(userAccountControl / pow(2, 13)) %2 |  eval eval_rodc_bit = floor(userAccountControl / pow(2, 26)) %2 | search ((eval_dc_bit = 1 OR eval_rodc_bit = 1)  AND DN = "*,OU=Domain Controllers,*") OR  adminCount=1 | fields DN] | makemv pszLastOriginatingDsaDN delim=",CN=" | eval OriginatingDC = mvindex(pszLastOriginatingDsaDN, 1, 1) |  sort -_time  |  table _time, DN, pszAttributeName, OriginatingDC</query>
+          <earliest>0</earliest>
+          <latest></latest>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">cell</option>
+        <option name="refresh.display">progressbar</option>
+        <drilldown>
+          <link target="_blank">search?q=index=$ad_index$%20host=$domain_host$%20sourcetype=adtimeline%20%20(pszAttributeName%20=%20%22msDS-AllowedToActOnBehalfOfOtherIdentity%22%20OR%20pszAttributeName%20=%20%22pwdLastSet%22)%20%5Bsearch%20index=$ad_index$%20host=$domain_host$%20sourcetype=adobjects%20%20(ObjectClass%20=%20%22user%22%20OR%20ObjectClass%20=%20%22inetOrgPerson%22%20OR%20ObjectClass%20=%20%22Computer%22)%20%20%7C%20%20eval%20eval_dc_bit%20=%20floor(userAccountControl%20/%20pow(2,%2013))%20%252%20%7C%20%20eval%20eval_rodc_bit%20=%20floor(userAccountControl%20/%20pow(2,%2026))%20%252%20%7C%20search%20((eval_dc_bit%20=%201%20OR%20eval_rodc_bit%20=%201)%20%20AND%20DN%20=%20%22*,OU=Domain%20Controllers,*%22)%20OR%20%20adminCount=1%20%7C%20fields%20DN%5D%20%7C%20makemv%20pszLastOriginatingDsaDN%20delim=%22,CN=%22%20%7C%20eval%20OriginatingDC%20=%20mvindex(pszLastOriginatingDsaDN,%201,%201)%20%7C%20%20search%20$click.name2$%20=%20%22$click.value2$%22&amp;earliest=0&amp;latest=</link>
+        </drilldown>
+      </table>
+      <html depends="$show_html_rbcd$">
+         <p style="font-weight: bold !important;font-size:14px">Resource based constrained delegation on privileged account or Domain Controller: No results</p>
+      </html>
+      <chart rejects="$show_html_pwddcc$">
+        <title>Domain Controller password change frequency:</title>
+        <search>
+          <query>index=$ad_index$ host=$domain_host$ sourcetype=adobjects  ObjectClass= "Computer" DN = "*,OU=Domain Controllers,*" |  eval eval_dc_bit = floor(userAccountControl / pow(2, 13)) %2 |  eval eval_rodc_bit = floor(userAccountControl / pow(2, 26)) %2 | search eval_dc_bit = 1 OR eval_rodc_bit = 1 | rex field=_raw "pwdLastSet\"&gt;(?&lt;pwdLastSet&gt;.+?)&lt;/I64&gt;"
+|  eval TimeDiff = round((lastLogonTimestamp - pwdLastSet) / (10000000 * 60 * 60 * 24)) 
+|  eval DiffPwdLastSet= if(TimeDiff &lt; 32,"OK less than 31 days","NOK more than 31 days") 
+|  stats count by DiffPwdLastSet</query>
+          <earliest>0</earliest>
+          <latest></latest>
+          <progress>
+            <condition match="$job.resultCount$ == 0">
+              <set token="show_html_pwddcc">toto</set>
+            </condition>
+            <condition>
+              <unset token="show_html_pwddcc"></unset>
+            </condition>
+          </progress>
+        </search>
+        <option name="charting.chart">pie</option>
+        <option name="charting.drilldown">all</option>
+        <option name="charting.fieldColors">{"NOK more than 31 days":0xFF0000}</option>
+        <option name="refresh.display">progressbar</option>
+        <drilldown>
+          <link target="_blank">search?q=index=$ad_index$%20host=$domain_host$%20sourcetype=adobjects%20%20ObjectClass=%20%22Computer%22%20DN%20=%20%22*,OU=Domain%20Controllers,*%22%20%7C%20%20eval%20eval_dc_bit%20=%20floor(userAccountControl%20/%20pow(2,%2013))%20%252%20%7C%20%20eval%20eval_rodc_bit%20=%20floor(userAccountControl%20/%20pow(2,%2026))%20%252%20%7C%20search%20eval_dc_bit%20=%201%20OR%20eval_rodc_bit%20=%201%20%7C%20rex%20field=_raw%20%22pwdLastSet%5C%22%3E(%3F%3CpwdLastSet%3E.%2B%3F)%3C/I64%3E%22%0A%7C%20%20eval%20TimeDiff%20=%20round((lastLogonTimestamp%20-%20pwdLastSet)%20/%20(10000000%20*%2060%20*%2060%20*%2024))%20%0A%7C%20%20eval%20DiffPwdLastSet=%20if(TimeDiff%20%3C%2032,%22OK%20less%20than%2031%20days%22,%22NOK%20more%20than%2031%20days%22)%20%0A%7C%20%20search%20$click.name$%20=%20%22$click.value$%22&amp;earliest=0&amp;latest=</link>
+        </drilldown>
+      </chart>
+      <html depends="$show_html_pwddcc$">
+         <p style="font-weight: bold !important;font-size:14px">Domain Controller password change frequency: No results</p>
+      </html>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>GPOs</title>
+      <table rejects="$show_html_gpoaudit$">
+        <title>Modifications on GPOs configuring audit settings:</title>
+        <search>
+          <query>index=$ad_index$ host=$domain_host$ sourcetype=adtimeline  ((pszAttributeName = "gPCMachineExtensionNames" OR pszAttributeName = "nTSecurityDescriptor" OR  pszAttributeName = "versionNumber") AND dwVersion &gt;= 2) OR pszAttributeName = "whenCreated" [search index=$ad_index$ host=$domain_host$ sourcetype="adobjects" ObjectClass=groupPolicyContainer ("*F3CCC681-B74C-4060-9F26-CD84525DCA2A*" OR "*0F3F3735-573D-9804-99E4-AB2A69BA5FD4*") | fields DN] 
+|  makemv pszLastOriginatingDsaDN delim=",CN=" | eval OriginatingDC = mvindex(pszLastOriginatingDsaDN, 1, 1) 
+| join DN [search  index=$ad_index$ host=$domain_host$ ObjectClass=groupPolicyContainer ("*F3CCC681-B74C-4060-9F26-CD84525DCA2A*" OR "*0F3F3735-573D-9804-99E4-AB2A69BA5FD4*") | fields DN, DisplayName]  
+|  join Name 
+    [search index=$ad_index$ host=$domain_host$ sourcetype="adobjects" (ObjectClass = "domainDNS" OR ObjectClass = "site" OR ObjectClass = "organizationalUnit")  | rex field=_raw "gPLink\"&gt;(?&lt;gPLink&gt;.+?)&lt;/S&gt;" 
+ |  search  gPLink = "*" 
+|  rex field=gPLink "(CN|cn)\=(?&lt;Name&gt;\{.+?\})," max_match=0 
+| mvexpand Name
+|  stats values(DN) as Links by Name 
+|  fields Name, Links ]
+|  table _time, DisplayName, pszAttributeName, dwVersion, Links, Name, OriginatingDC | sort -_time</query>
+          <earliest>0</earliest>
+          <latest></latest>
+          <progress>
+            <condition match="$job.resultCount$ == 0">
+              <set token="show_html_gpoaudit">toto</set>
+            </condition>
+            <condition>
+              <unset token="show_html_gpoaudit"></unset>
+            </condition>
+          </progress>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">cell</option>
+        <format type="color" field="OriginatingDC">
+          <colorPalette type="sharedList"></colorPalette>
+          <scale type="sharedCategory"></scale>
+        </format>
+        <format type="color" field="DisplayName">
+          <colorPalette type="sharedList"></colorPalette>
+          <scale type="sharedCategory"></scale>
+        </format>
+        <format type="color" field="dwVersion">
+          <colorPalette type="minMidMax" maxColor="#006D9C" minColor="#FFFFFF"></colorPalette>
+          <scale type="minMidMax"></scale>
+        </format>
+        <drilldown>
+          <link target="_blank">search?q=index=$ad_index$%20host=$domain_host$%20sourcetype=adtimeline%20%20%20%5Bsearch%20index=$ad_index$%20host=$domain_host$%20sourcetype=%22adobjects%22%20ObjectClass=groupPolicyContainer%20(%22*F3CCC681-B74C-4060-9F26-CD84525DCA2A*%22%20OR%20%22*0F3F3735-573D-9804-99E4-AB2A69BA5FD4*%22)%20%7C%20fields%20DN%5D%20%0A%7C%20%20makemv%20pszLastOriginatingDsaDN%20delim=%22,CN=%22%20%7C%20eval%20OriginatingDC%20=%20mvindex(pszLastOriginatingDsaDN,%201,%201)%20%0A%7C%20join%20DN%20%5Bsearch%20%20index=$ad_index$%20host=$domain_host$%20ObjectClass=groupPolicyContainer%20(%22*F3CCC681-B74C-4060-9F26-CD84525DCA2A*%22%20OR%20%22*0F3F3735-573D-9804-99E4-AB2A69BA5FD4*%22)%20%7C%20fields%20DN,%20DisplayName%5D%20%20%0A%7C%20%20join%20Name%20%0A%20%20%20%20%5Bsearch%20index=$ad_index$%20host=$domain_host$%20sourcetype=%22adobjects%22%20(ObjectClass%20=%20%22domainDNS%22%20OR%20ObjectClass%20=%20%22site%22%20OR%20ObjectClass%20=%20%22organizationalUnit%22)%20%20%7C%20rex%20field=_raw%20%22gPLink%5C%22%3E(%3F%3CgPLink%3E.%2B%3F)%3C/S%3E%22%20%0A%20%7C%20%20search%20%20gPLink%20=%20%22*%22%20%0A%7C%20%20rex%20field=gPLink%20%22(CN%7Ccn)%5C=(%3F%3CName%3E%5C%7B.%2B%3F%5C%7D),%22%20max_match=0%20%0A%7C%20mvexpand%20Name%0A%7C%20%20stats%20values(DN)%20as%20Links%20by%20Name%20%0A%7C%20%20fields%20Name,%20Links%20%5D%0A%7C%20%20search%20$click.name2$%20=%20%22$click.value2$%22&amp;earliest=0&amp;latest=</link>
+        </drilldown>
+      </table>
+      <html depends="$show_html_gpoaudit$">
+         <p style="font-weight: bold !important;font-size:14px">Modifications on GPOs configuring audit settings: No results</p>
+      </html>
+      <table rejects="$show_html_breakgpp$">
+        <title>Modifications breaking GPO processing:</title>
+        <search>
+          <progress>
+            <condition match="$job.resultCount$ == 0">
+              <set token="show_html_breakgpp">toto</set>
+            </condition>
+            <condition>
+              <unset token="show_html_breakgpp"></unset>
+            </condition>
+          </progress>
+          <query>index=$ad_index$ host=$domain_host$ sourcetype="adtimeline" ObjectClass=groupPolicyContainer ((pszAttributeName="versionNumber" OR pszAttributeName="gPCFunctionalityVersion") AND dwVersion &gt; 1) OR (pszAttributeName="gPCFileSysPath" AND dwVersion &gt; 2)
+| join DN 
+    [search index=$ad_index$ host=$domain_host$ sourcetype="adobjects" ObjectClass=groupPolicyContainer 
+    | rex field=_raw "versionNumber\"&gt;(?&lt;versionNumber&gt;.+?)&lt;/I32&gt;" 
+    |  fields DN, DisplayName, versionNumber] 
+| search pszAttributeName="gPCFileSysPath" OR pszAttributeName="gPCFunctionalityVersion" OR (pszAttributeName="versionNumber" AND versionNumber = 0)
+|  table _time,  DisplayName, pszAttributeName, dwVersion</query>
+          <earliest>0</earliest>
+          <latest></latest>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">cell</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+      <html depends="$show_html_breakgpp$">
+         <p style="font-weight: bold !important;font-size:14px">Modifications breaking GPO processing: No results</p>
+      </html>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>DCShadow detection</title>
+      <chart rejects="$show_html_dcshadow$">
+        <title>Possible DCShadow operations:</title>
+        <search>
+          <query>index=$ad_index$ host=$domain_host$ sourcetype=adtimeline (ObjectClass="Server" OR ObjectClass="nTDSDSA") pszAttributeName="Isdeleted" | eval whencreate=strptime(WhenCreated,"%Y-%m-%d %H:%M:%S%Z")  | eval timediff = _time - whencreate | search timediff &lt; 10 | timechart  span=1week count by pszAttributeName limit=0</query>
+          <earliest>0</earliest>
+          <latest></latest>
+          <progress>
+            <condition match="$job.resultCount$ == 0">
+              <set token="show_html_dcshadow">toto</set>
+            </condition>
+            <condition>
+              <unset token="show_html_dcshadow"></unset>
+            </condition>
+          </progress>
+        </search>
+        <option name="charting.chart">column</option>
+        <option name="charting.drilldown">all</option>
+        <option name="refresh.display">progressbar</option>
+        <drilldown>
+          <eval token="drilldown.earliest">if(isnull($row._time$),1,$row._time$)</eval>
+          <eval token="drilldown.latest">if(isnull($row._time$),now(),$row._time$ + 604800)</eval>
+          <link target="_blank">search?q=index=$ad_index$%20host=$domain_host$%20sourcetype=adtimeline%20(ObjectClass=%22Server%22%20OR%20ObjectClass=%22nTDSDSA%22)%20pszAttributeName=%22Isdeleted%22%20%7C%20eval%20whencreate=strptime(WhenCreated,%22%25Y-%25m-%25d%20%25H:%25M:%25S%25Z%22)%20%20%7C%20eval%20timediff%20=%20_time%20-%20whencreate%20%7C%20search%20timediff%20%3C%2010&amp;earliest=$drilldown.earliest$&amp;latest=$drilldown.latest$</link>
+        </drilldown>
+      </chart>
+      <html depends="$show_html_dcshadow$">
+         <p style="font-weight: bold !important;font-size:14px">Possible DCShadow operations: No results</p>
+      </html>
+      <table rejects="$show_html_usnOriginatingChang$">
+        <title>Possible metadata timestomping, usnOriginatingChange detection:</title>
+        <search>
+          <query>index=$ad_index$ host=$domain_host$ sourcetype=adtimeline  | sort 0  uuidLastOriginatingDsaInvocationID, usnOriginatingChange  | autoregress usnOriginatingChange as Previous_usnOriginatingChange p=1 | autoregress ftimeLastOriginatingChange as Previous_ftimeLastOriginatingChange p=1 | autoregress uuidLastOriginatingDsaInvocationID as Previous_uuidLastOriginatingDsaInvocationID p=1 | delta _time AS timeDelta | search (timeDelta &lt; -60 NOT (ObjectClass="container" AND Name="Deleted Objects"))  | where uuidLastOriginatingDsaInvocationID = Previous_uuidLastOriginatingDsaInvocationID | stats count, list(DN) as DNs, list(pszAttributeName) as pszAttributeNames, list(usnOriginatingChange) as usnOriginatingChanges list(Previous_usnOriginatingChange) as prev_usnOriginatingChanges list(ftimeLastOriginatingChange) as ModificationTimes list(Previous_ftimeLastOriginatingChange) as prev_ModificationTimes by uuidLastOriginatingDsaInvocationID, pszLastOriginatingDsaDN | where count &gt; 1 |  makemv pszLastOriginatingDsaDN delim=",CN=" | eval OriginatingDC = mvindex(pszLastOriginatingDsaDN, 1, 1) | table usnOriginatingChanges, prev_usnOriginatingChanges, DNs, pszAttributeNames, ModificationTimes,prev_ModificationTimes, OriginatingDC, uuidLastOriginatingDsaInvocationID</query>
+          <earliest>0</earliest>
+          <latest></latest>
+          <progress>
+            <condition match="$job.resultCount$ == 0">
+              <set token="show_html_usnOriginatingChang">toto</set>
+            </condition>
+            <condition>
+              <unset token="show_html_usnOriginatingChang"></unset>
+            </condition>
+          </progress>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">cell</option>
+        <drilldown>
+          <link target="_blank">search?q=index=$ad_index$%20host=$domain_host$%20sourcetype=adtimeline%20%20%7C%20sort%200%20%20uuidLastOriginatingDsaInvocationID,%20usnOriginatingChange%20%20%7C%20autoregress%20usnOriginatingChange%20as%20Previous_usnOriginatingChange%20p=1%20%7C%20autoregress%20ftimeLastOriginatingChange%20as%20Previous_ftimeLastOriginatingChange%20p=1%20%7C%20autoregress%20uuidLastOriginatingDsaInvocationID%20as%20Previous_uuidLastOriginatingDsaInvocationID%20p=1%20%7C%20delta%20_time%20AS%20timeDelta%20%7C%20search%20(timeDelta%20%3C%20-60%20NOT%20(ObjectClass=%22container%22%20AND%20Name=%22Deleted%20Objects%22))%20%20%7C%20where%20uuidLastOriginatingDsaInvocationID%20=%20Previous_uuidLastOriginatingDsaInvocationID&amp;earliest=0&amp;latest=</link>
+        </drilldown>
+      </table>
+      <html depends="$show_html_usnOriginatingChang$">
+         <p style="font-weight: bold !important;font-size:14px">Possible metadata timestomping, usnOriginatingChange detection: No results</p>
+      </html>
+      <table rejects="$show_html_usnLocalChang$">
+        <title>Possible metadata timestomping, usnLocalChange detection:</title>
+        <search>
+          <progress>
+            <condition match="$job.resultCount$ == 0">
+              <set token="show_html_usnLocalChang">toto</set>
+            </condition>
+            <condition>
+              <unset token="show_html_usnLocalChang"></unset>
+            </condition>
+          </progress>
+          <query>index=$ad_index$ host=$domain_host$ sourcetype=adtimeline earliest="$Dcinstall$" | sort 0 usnLocalChange  | delta _time AS timeDelta |   autoregress usnLocalChange as Previous_usnLocalChange p=1 | autoregress ftimeLastOriginatingChange as Previous_ftimeLastOriginatingChange p=1 | search (timeDelta &lt; -2592000 NOT (ObjectClass="container" AND Name="Deleted Objects")) | makemv pszLastOriginatingDsaDN delim=",CN=" | eval OriginatingDC = mvindex(pszLastOriginatingDsaDN, 1, 1) | table usnLocalChange , DN, pszAttributeName,  ftimeLastOriginatingChange, OriginatingDC, uuidLastOriginatingDsaInvocationID, Previous_usnLocalChange, Previous_ftimeLastOriginatingChange</query>
+          <earliest>0</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">cell</option>
+        <format type="color" field="pszAttributeName">
+          <colorPalette type="sharedList"></colorPalette>
+          <scale type="sharedCategory"></scale>
+        </format>
+        <format type="color" field="OriginatingDC">
+          <colorPalette type="sharedList"></colorPalette>
+          <scale type="sharedCategory"></scale>
+        </format>
+        <drilldown>
+          <link target="_blank">search?q=index=$ad_index$%20host=$domain_host$%20sourcetype=adtimeline%20earliest=%22$Dcinstall$%22%20%7C%20sort%200%20usnLocalChange%20%20%7C%20delta%20_time%20AS%20timeDelta%20%7C%20%20%20autoregress%20usnLocalChange%20as%20Previous_usnLocalChange%20p=1%20%7C%20autoregress%20ftimeLastOriginatingChange%20as%20Previous_ftimeLastOriginatingChange%20p=1%20%7C%20search%20(timeDelta%20%3C%20-2592000%20NOT%20(ObjectClass=%22container%22%20AND%20Name=%22Deleted%20Objects%22))%20%7C%20makemv%20pszLastOriginatingDsaDN%20delim=%22,CN=%22%20%7C%20eval%20OriginatingDC%20=%20mvindex(pszLastOriginatingDsaDN,%201,%201)%20%7C%20%20search%20$click.name2$%20=%20%22$click.value2$%22&amp;earliest=0&amp;latest=now</link>
+        </drilldown>
+      </table>
+      <html depends="$show_html_usnLocalChang$">
+         <p style="font-weight: bold !important;font-size:14px">Possible metadata timestomping, usnLocalChange detection: No results</p>
+      </html>
+    </panel>
+    <panel>
+      <title>Schema and configuration partition suspicious modifications:</title>
+      <chart rejects="$show_html_schemconf$">
+        <title>Schema: SearchFlags or defaultSecurityDescriptor attributes | Configuration: RightsGuid, LocalizationDisplayId, DsHeuristics or tombstoneLifetime attributes</title>
+        <search>
+          <query>index=$ad_index$ host=$domain_host$ sourcetype=adtimeline (pszAttributeName="SearchFlags" OR pszAttributeName="defaultSecurityDescriptor" OR pszAttributeName="RightsGuid" OR pszAttributeName="LocalizationDisplayId" OR pszAttributeName="DsHeuristics" OR pszAttributeName="tombstoneLifetime") dwVersion &gt;= 2  | timechart  span=1week count by pszAttributeName limit=0</query>
+          <earliest>0</earliest>
+          <latest></latest>
+          <progress>
+            <condition match="$job.resultCount$ == 0">
+              <set token="show_html_schemconf">toto</set>
+            </condition>
+            <condition>
+              <unset token="show_html_schemconf"></unset>
+            </condition>
+          </progress>
+        </search>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.stackMode">default</option>
+        <option name="charting.drilldown">all</option>
+        <option name="refresh.display">progressbar</option>
+        <drilldown>
+          <eval token="drilldown.earliest">if(isnull($row._time$),1,$row._time$)</eval>
+          <eval token="drilldown.latest">if(isnull($row._time$),now(),$row._time$ + $row._span$)</eval>
+          <link target="_blank">search?q=index=$ad_index$%20host=$domain_host$%20sourcetype=adtimeline%20(pszAttributeName=%22SearchFlags%22%20OR%20pszAttributeName=%22defaultSecurityDescriptor%22%20OR%20pszAttributeName=%22RightsGuid%22%20OR%20pszAttributeName=%22LocalizationDisplayId%22%20OR%20pszAttributeName=%22DsHeuristics%22%20OR%20pszAttributeName=%22tombstoneLifetime%22)%20dwVersion%20%3E=%202%20%7C%20%20search%20%20pszAttributeName%20=%20%22$click.name2$%22&amp;earliest=$drilldown.earliest$&amp;latest=$drilldown.latest$</link>
+        </drilldown>
+      </chart>
+      <html depends="$show_html_schemconf$">
+         <p style="font-weight: bold !important;font-size:14px">Schema and configuration partition suspicious modifications: No results</p>
+      </html>
+      <chart rejects="$show_html_mailexfil$">
+        <title>Possible mail exfiltration on Exchange on prem msExchMRSRequest, msExchTransportRule and msExchPrivateMDB ObjectClass:</title>
+        <search>
+          <query>index=$ad_index$ host=$domain_host$ sourcetype=adtimeline (ObjectClass=msExchMRSRequest AND pszAttributeName="isDeleted") OR (ObjectClass=msExchTransportRule AND  pszAttributeName=msExchTransportRuleXml) OR (ObjectClass=msExchPrivateMDB AND pszAttributeName=nTSecurityDescriptor AND dwVersion &gt;= 2 ) OR (ObjectClass=msExchRoleAssignment AND  pszAttributeName=msExchRoleAssignmentFlags)  | bucket span=1week _time | stats count by _time ObjectClass | where ObjectClass != "msExchRoleAssignment" OR (ObjectClass="msExchRoleAssignment" AND count &lt; 50) | xyseries _time,ObjectClass,count</query>
+          <earliest>0</earliest>
+          <latest></latest>
+          <progress>
+            <condition match="$job.resultCount$ == 0">
+              <set token="show_html_mailexfil">toto</set>
+            </condition>
+            <condition>
+              <unset token="show_html_mailexfil"></unset>
+            </condition>
+          </progress>
+        </search>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.drilldown">all</option>
+        <option name="refresh.display">progressbar</option>
+        <drilldown>
+          <eval token="drilldown.earliest">if(isnull($row._time$),1,$row._time$)</eval>
+          <eval token="drilldown.latest">if(isnull($row._time$),now(),$row._time$ + 604800)</eval>
+          <link target="_blank">search?q=index=$ad_index$%20host=$domain_host$%20sourcetype=adtimeline%20(ObjectClass=msExchMRSRequest%20AND%20pszAttributeName=%22isDeleted%22)%20OR%20(ObjectClass=msExchTransportRule%20AND%20%20pszAttributeName=msExchTransportRuleXml)%20OR%20(ObjectClass=msExchPrivateMDB%20AND%20pszAttributeName=nTSecurityDescriptor%20AND%20dwVersion%20%3E=%202%20)%20OR%20(ObjectClass=msExchRoleAssignment%20AND%20%20pszAttributeName=msExchRoleAssignmentFlags)%20%20%7C%20%20search%20%20ObjectClass%20=%20%22$click.name2$%22&amp;earliest=$drilldown.earliest$&amp;latest=$drilldown.latest$</link>
+        </drilldown>
+      </chart>
+      <html depends="$show_html_mailexfil$">
+         <p style="font-weight: bold !important;font-size:14px">Possible mail exfiltration on Exchange on prem msExchMRSRequest, msExchTransportRule and msExchPrivateMDB ObjectClass: No results</p>
+      </html>
+    </panel>
+  </row>
+</form>

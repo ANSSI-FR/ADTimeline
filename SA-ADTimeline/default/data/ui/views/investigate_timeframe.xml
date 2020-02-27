@@ -1,0 +1,456 @@
+<form theme="light">
+  <label>Investigate timeframe</label>
+  <fieldset submitButton="false"></fieldset>
+  <row>
+    <panel>
+      <input type="dropdown" token="ad_index" searchWhenChanged="true">
+        <label>Choose index to process:</label>
+        <search>
+          <query>| tstats latest(_time) where index=*  by index</query>
+        </search>
+        <selectFirstChoice>true</selectFirstChoice>
+        <fieldForLabel>index</fieldForLabel>
+        <fieldForValue>index</fieldForValue>
+      </input>
+      <input type="dropdown" token="domain_host" searchWhenChanged="true">
+        <label>Choose AD Domain to process:</label>
+        <search>
+          <query>| tstats latest(_time) where index=$ad_index$ (sourcetype=adobjects OR sourcetype=gcobjects OR sourcetype=adtimeline)  by host</query>
+        </search>
+        <selectFirstChoice>true</selectFirstChoice>
+        <fieldForLabel>host</fieldForLabel>
+        <fieldForValue>host</fieldForValue>
+      </input>
+      <input type="time" token="time_token" searchWhenChanged="true">
+        <label>Select timeframe:</label>
+        <default>
+          <earliest>-7d@h</earliest>
+          <latest>now</latest>
+        </default>
+      </input>
+    </panel>
+    <panel>
+      <html>
+      <p style="text-align:center;">
+          <img src="/static/app/SA-ADTimeline/images/logo.png"/>
+        </p>
+      </html>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>AD Timeline:</title>
+      <table>
+        <search>
+          <query>index=$ad_index$ host=$domain_host$ sourcetype=adtimeline NOT (pszAttributeName="Member" AND dwVersion = 0) | makemv pszLastOriginatingDsaDN delim=",CN=" | eval OriginatingDC = mvindex(pszLastOriginatingDsaDN, 1, 1) | table _time, DN, ObjectClass, pszAttributeName, dwVersion, OriginatingDC | sort -_time</query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">cell</option>
+        <option name="refresh.display">progressbar</option>
+        <format type="color" field="dwVersion">
+          <colorPalette type="minMidMax" maxColor="#006D9C" minColor="#FFFFFF"></colorPalette>
+          <scale type="minMidMax"></scale>
+        </format>
+        <format type="color" field="pszAttributeName">
+          <colorPalette type="map">{"whenCreated":#B6C75A,"isDeleted":#AF575A,"nTSecurityDescriptor":#F1813F,"member":#F1813F}</colorPalette>
+        </format>
+        <format type="color" field="DN">
+          <colorPalette type="sharedList"></colorPalette>
+          <scale type="sharedCategory"></scale>
+        </format>
+        <format type="color" field="OriginatingDC">
+          <colorPalette type="sharedList"></colorPalette>
+          <scale type="sharedCategory"></scale>
+        </format>
+        <drilldown>
+          <link target="_blank">search?q=index=$ad_index$%20host=$domain_host$%20sourcetype=adtimeline%20%7C%20makemv%20pszLastOriginatingDsaDN%20delim=%22,CN=%22%20%7C%20eval%20OriginatingDC%20=%20mvindex(pszLastOriginatingDsaDN,%201,%201)%20%7C%20%20search%20$click.name2$%20=%20%22$click.value2$%22&amp;earliest=$time_token.earliest$&amp;latest=$time_token.latest$</link>
+        </drilldown>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Global stats (1/2):</title>
+      <chart>
+        <title>Modifications by ObjectClass</title>
+        <search>
+          <query>index=$ad_index$ host=$domain_host$ sourcetype=adtimeline NOT ObjectClass="System.DirectoryServices.ResultPropertyValueCollection" | stats count by ObjectClass</query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+        </search>
+        <option name="charting.axisTitleX.visibility">visible</option>
+        <option name="charting.axisTitleY.visibility">visible</option>
+        <option name="charting.axisTitleY2.visibility">visible</option>
+        <option name="charting.chart">pie</option>
+        <option name="charting.chart.rangeValues">[0,4,4.1,7]</option>
+        <option name="charting.chart.sliceCollapsingThreshold">0</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.chart.style">shiny</option>
+        <option name="charting.drilldown">all</option>
+        <option name="charting.gaugeColors">["0xdc4e41","0xf8be34","0x53a051"]</option>
+        <option name="charting.legend.placement">right</option>
+        <option name="height">236</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="trellis.enabled">0</option>
+        <option name="trellis.size">medium</option>
+        <option name="trellis.splitBy">Name</option>
+        <drilldown>
+          <link target="_blank">search?q=index=$ad_index$%20host=$domain_host$%20sourcetype=adtimeline%20NOT%20ObjectClass=%22System.DirectoryServices.ResultPropertyValueCollection%22%20%7C%20search%20$click.name$%20=%20%22$click.value$%22&amp;earliest=$time_token.earliest$&amp;latest=$time_token.latest$</link>
+        </drilldown>
+      </chart>
+      <chart>
+        <title>Modifications by pszAttributeName:</title>
+        <search>
+          <query>index=$ad_index$ host=$domain_host$ sourcetype=adtimeline  | stats count by pszAttributeName</query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+        </search>
+        <option name="charting.chart">pie</option>
+        <option name="charting.chart.sliceCollapsingThreshold">0</option>
+        <option name="charting.drilldown">all</option>
+        <option name="refresh.display">progressbar</option>
+        <drilldown>
+          <link target="_blank">search?q=index=$ad_index$%20host=$domain_host$%20sourcetype=adtimeline%20%20%7C%20search%20$click.name$%20=%20%22$click.value$%22&amp;earliest=$time_token.earliest$&amp;latest=$time_token.latest$</link>
+        </drilldown>
+      </chart>
+      <chart rejects="$show_html_deletebyclass$">
+        <title>Deletions by ObjectClass:</title>
+        <search>
+          <query>index=$ad_index$ host=$domain_host$ sourcetype=adtimeline pszAttributeName="isDeleted"  NOT ObjectClass="System.DirectoryServices.ResultPropertyValueCollection" | stats count by ObjectClass</query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+          <progress>
+            <condition match="$job.resultCount$ == 0">
+              <set token="show_html_deletebyclass">toto</set>
+            </condition>
+            <condition>
+              <unset token="show_html_deletebyclass"></unset>
+            </condition>
+          </progress>
+        </search>
+        <option name="charting.chart">pie</option>
+        <option name="charting.chart.sliceCollapsingThreshold">0</option>
+        <option name="charting.drilldown">all</option>
+        <option name="refresh.display">progressbar</option>
+        <drilldown>
+          <link target="_blank">search?q=index=$ad_index$%20host=$domain_host$%20sourcetype=adtimeline%20pszAttributeName=%22isDeleted%22%20%20NOT%20ObjectClass=%22System.DirectoryServices.ResultPropertyValueCollection%22%20%7C%20search%20$click.name$%20=%20%22$click.value$%22&amp;earliest=$time_token.earliest$&amp;latest=$time_token.latest$</link>
+        </drilldown>
+      </chart>
+      <html depends="$show_html_deletebyclass$">
+         <p style="font-weight: bold !important;font-size:14px">Deletions by ObjectClass: No results</p>
+      </html>
+    </panel>
+    <panel>
+      <title>Global stats (2/2):</title>
+      <chart>
+        <title>ObjectClass modifications by day of the week:</title>
+        <search>
+          <query>index=$ad_index$ host=$domain_host$ sourcetype=adtimeline NOT ObjectClass="System.DirectoryServices.ResultPropertyValueCollection" | chart count over date_wday by ObjectClass</query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+        </search>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.showDataLabels">none</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.drilldown">all</option>
+        <option name="refresh.display">progressbar</option>
+        <drilldown>
+          <link target="_blank">search?q=index=$ad_index$%20host=$domain_host$%20sourcetype=adtimeline%20NOT%20ObjectClass=%22System.DirectoryServices.ResultPropertyValueCollection%22%20%7C%20search%20$click.name$%20=%20%22$click.value$%22%20AND%20ObjectClass%20=%20%22$click.name2$%22&amp;earliest=$time_token.earliest$&amp;latest=$time_token.latest$</link>
+        </drilldown>
+      </chart>
+      <chart>
+        <title>ObjectClass modifications by hour:</title>
+        <search>
+          <query>index=$ad_index$ host=$domain_host$ sourcetype=adtimeline NOT ObjectClass="System.DirectoryServices.ResultPropertyValueCollection" | chart count over date_hour by ObjectClass</query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+        </search>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.drilldown">all</option>
+        <option name="refresh.display">progressbar</option>
+        <drilldown>
+          <link target="_blank">search?q=index=$ad_index$%20host=$domain_host$%20sourcetype=adtimeline%20NOT%20ObjectClass=%22System.DirectoryServices.ResultPropertyValueCollection%22%20%7C%20search%20$click.name$%20=%20%22$click.value$%22%20AND%20ObjectClass%20=%20%22$click.name2$%22&amp;earliest=$time_token.earliest$&amp;latest=$time_token.latest$</link>
+        </drilldown>
+      </chart>
+      <chart>
+        <title>Modifications by Originating DC:</title>
+        <search>
+          <query>index=$ad_index$ host=$domain_host$ sourcetype=adtimeline | makemv pszLastOriginatingDsaDN delim=",CN=" | eval OriginatingDC = mvindex(pszLastOriginatingDsaDN, 1, 1) | stats count by OriginatingDC</query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+        </search>
+        <option name="charting.chart">pie</option>
+        <option name="charting.chart.sliceCollapsingThreshold">0</option>
+        <option name="charting.drilldown">all</option>
+        <option name="refresh.display">progressbar</option>
+        <drilldown>
+          <link target="_blank">search?q=index=$ad_index$%20host=$domain_host$%20sourcetype=adtimeline%20%7C%20makemv%20pszLastOriginatingDsaDN%20delim=%22,CN=%22%20%7C%20eval%20OriginatingDC%20=%20mvindex(pszLastOriginatingDsaDN,%201,%201)%20%7C%20search%20$click.name$%20=%20%22$click.value$%22&amp;earliest=$time_token.earliest$&amp;latest=$time_token.latest$</link>
+        </drilldown>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Items created and deleted within timeframe:</title>
+      <table rejects="$show_html_createanddel$">
+        <title>Timeline:</title>
+        <search>
+          <progress>
+            <condition match="$job.resultCount$ == 0">
+              <set token="show_html_createanddel">toto</set>
+            </condition>
+            <condition>
+              <unset token="show_html_createanddel"></unset>
+            </condition>
+          </progress>
+          <query>index=$ad_index$ host=$domain_host$ sourcetype=adtimeline (pszAttributeName="isDeleted" OR pszAttributeName="WhenCreated")| makemv pszLastOriginatingDsaDN delim=",CN=" | eval OriginatingDC = mvindex(pszLastOriginatingDsaDN, 1, 1) | stats count, values(ObjectClass) as ObjectClass, list(ftimeLastOriginatingChange) as Whencreated_deleted, list(OriginatingDC) as OriginatingDCs by DN | where count &gt; 1 | table DN, ObjectClass, Whencreated_deleted, OriginatingDCs</query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">cell</option>
+        <option name="refresh.display">progressbar</option>
+        <format type="color" field="ObjectClass">
+          <colorPalette type="sharedList"></colorPalette>
+          <scale type="sharedCategory"></scale>
+        </format>
+        <format type="color" field="OriginatingDCs">
+          <colorPalette type="sharedList"></colorPalette>
+          <scale type="sharedCategory"></scale>
+        </format>
+        <drilldown>
+          <link target="_blank">search?q=index=$ad_index$%20host=$domain_host$%20sourcetype=adtimeline%20(pszAttributeName=%22isDeleted%22%20OR%20pszAttributeName=%22WhenCreated%22)%7C%20makemv%20pszLastOriginatingDsaDN%20delim=%22,CN=%22%20%7C%20eval%20OriginatingDC%20=%20mvindex(pszLastOriginatingDsaDN,%201,%201)%20%7C%20stats%20count,%20values(ObjectClass)%20as%20ObjectClass,%20list(ftimeLastOriginatingChange)%20as%20Whencreated_deleted,%20list(OriginatingDC)%20as%20OriginatingDCs%20by%20DN%20%7C%20where%20count%20%3E%201%20%7C%20search%20$click.name2$%20=%20%22$click.value2$%22&amp;earliest=$time_token.earliest$&amp;latest=$time_token.latest$</link>
+        </drilldown>
+      </table>
+      <html depends="$show_html_createanddel$">
+         <p style="font-weight: bold !important;font-size:14px">Items created and deleted within timeframe: No results</p>
+      </html>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <chart rejects="$show_html_lifetimehours$">
+        <title>Object lifetime in hours:</title>
+        <search>
+          <progress>
+            <condition match="$job.resultCount$ == 0">
+              <set token="show_html_lifetimehours">toto</set>
+            </condition>
+            <condition>
+              <unset token="show_html_lifetimehours"></unset>
+            </condition>
+          </progress>
+          <query>index=$ad_index$ host=$domain_host$ sourcetype=adtimeline (pszAttributeName="isDeleted" OR pszAttributeName="WhenCreated")| makemv pszLastOriginatingDsaDN delim=",CN=" | eval OriginatingDC = mvindex(pszLastOriginatingDsaDN, 1, 1) | stats count, list(ftimeLastOriginatingChange) as temps, list(OriginatingDC) as OriginatingDCs by DN | where count &gt; 1 | eval deltime = strptime(mvindex(temps,0),"%Y-%m-%dT%H:%M:%S%Z") | eval createtime = strptime(mvindex(temps,1),"%Y-%m-%dT%H:%M:%S%Z") | eval Lifetime_hours=abs(floor((deltime-createtime)/3600)) | stats count by  Lifetime_hours</query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+        </search>
+        <option name="charting.chart">pie</option>
+        <option name="charting.chart.sliceCollapsingThreshold">0</option>
+        <option name="charting.drilldown">all</option>
+        <option name="refresh.display">progressbar</option>
+        <drilldown>
+          <link target="_blank">search?q=index=$ad_index$%20host=$domain_host$%20sourcetype=adtimeline%20(pszAttributeName%3D%22isDeleted%22%20OR%20pszAttributeName%3D%22WhenCreated%22)%7C%20makemv%20pszLastOriginatingDsaDN%20delim%3D%22%2CCN%3D%22%20%7C%20eval%20OriginatingDC%20%3D%20mvindex(pszLastOriginatingDsaDN%2C%201%2C%201)%20%7C%20stats%20count%2C%20list(ftimeLastOriginatingChange)%20as%20temps%2C%20list(OriginatingDC)%20as%20OriginatingDCs%2C%20values(ObjectClass)%20as%20ObjectClass%20by%20DN%20%7C%20where%20count%20%3E%201%20%7C%20eval%20deltime%20%3D%20strptime(mvindex(temps%2C0)%2C%22%2525Y-%2525m-%2525dT%2525H%3A%2525M%3A%2525S%2525Z%22)%20%7C%20eval%20createtime%20%3D%20strptime(mvindex(temps%2C1)%2C%22%2525Y-%2525m-%2525dT%2525H%3A%2525M%3A%2525S%2525Z%22)%20%7C%20eval%20Lifetime_hours%3Dabs(floor((deltime-createtime)%2F3600))%20%7C%20search%20Lifetime_hours%20%3D%20%22$click.value$%22%20%0A%7C%20table%20DN%2CObjectClass%2Ctemps%2CLifetime_hours%2C%20OriginatingDCs&amp;earliest=$time_token.earliest$&amp;latest=$time_token.latest$</link>
+        </drilldown>
+      </chart>
+      <html depends="$show_html_lifetimehours$">
+         <p style="font-weight: bold !important;font-size:14px">Object lifetime in hours: No results</p>
+      </html>
+    </panel>
+    <panel>
+      <chart rejects="$show_html_createdelbyobjclass$">
+        <title>Items created and deleted within timeframe by ObjectClass:</title>
+        <search>
+          <progress>
+            <condition match="$job.resultCount$ == 0">
+              <set token="show_html_createdelbyobjclass">toto</set>
+            </condition>
+            <condition>
+              <unset token="show_html_createdelbyobjclass"></unset>
+            </condition>
+          </progress>
+          <query>index=$ad_index$ host=$domain_host$ sourcetype=adtimeline (pszAttributeName="isDeleted" OR pszAttributeName="WhenCreated") NOT ObjectClass="System.DirectoryServices.ResultPropertyValueCollection" | makemv pszLastOriginatingDsaDN delim=",CN=" | eval OriginatingDC = mvindex(pszLastOriginatingDsaDN, 1, 1) | stats count, list(ftimeLastOriginatingChange) as temps, values(ObjectClass) as ObjectClass list(OriginatingDC) as OriginatingDCs by DN | where count &gt; 1 | stats count by ObjectClass</query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+        </search>
+        <option name="charting.chart">pie</option>
+        <option name="charting.chart.sliceCollapsingThreshold">0</option>
+        <option name="charting.drilldown">all</option>
+        <option name="refresh.display">progressbar</option>
+        <drilldown>
+          <link target="_blank">search?q=index=$ad_index$%20host=$domain_host$%20sourcetype=adtimeline%20(pszAttributeName=%22isDeleted%22%20OR%20pszAttributeName=%22WhenCreated%22)%20NOT%20ObjectClass=%22System.DirectoryServices.ResultPropertyValueCollection%22%20%7C%20makemv%20pszLastOriginatingDsaDN%20delim=%22,CN=%22%20%7C%20eval%20OriginatingDC%20=%20mvindex(pszLastOriginatingDsaDN,%201,%201)%20%7C%20stats%20count,%20list(ftimeLastOriginatingChange)%20as%20temps,%20values(ObjectClass)%20as%20ObjectClass%20list(OriginatingDC)%20as%20OriginatingDCs%20by%20DN%20%7C%20where%20count%20%3E%201%20%7C%20%20search%20$click.name$%20=%20%22$click.value$%22%20%0A%7C%20table%20DN,ObjectClass,temps,%20OriginatingDCs&amp;earliest=$time_token.earliest$&amp;latest=$time_token.latest$</link>
+        </drilldown>
+      </chart>
+      <html depends="$show_html_createdelbyobjclass$">
+         <p style="font-weight: bold !important;font-size:14px">Items created and deleted within timeframe by ObjectClass: No results</p>
+      </html>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Objects added or removed from groups or ACL modifications within timeframe:</title>
+      <table rejects="$show_html_memberoracl$">
+        <title>Timeline:</title>
+        <search>
+          <progress>
+            <condition match="$job.resultCount$ == 0">
+              <set token="show_html_memberoracl">toto</set>
+            </condition>
+            <condition>
+              <unset token="show_html_memberoracl"></unset>
+            </condition>
+          </progress>
+          <query>index=$ad_index$ host=$domain_host$ sourcetype=adtimeline (pszAttributeName="Member" AND dwVersion != 0) OR (pszAttributeName="nTSecurityDescriptor"  AND dwVersion &gt;= 2) | makemv pszLastOriginatingDsaDN delim=",CN=" | eval OriginatingDC = mvindex(pszLastOriginatingDsaDN, 1, 1) | table _time, DN, pszAttributeName, Member, dwVersion, OriginatingDC,ftimeCreated , ftimeDeleted  | sort -_time</query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">cell</option>
+        <option name="refresh.display">progressbar</option>
+        <format type="color" field="dwVersion">
+          <colorPalette type="minMidMax" maxColor="#006D9C" minColor="#FFFFFF"></colorPalette>
+          <scale type="minMidMax"></scale>
+        </format>
+        <format type="color" field="Member">
+          <colorPalette type="sharedList"></colorPalette>
+          <scale type="sharedCategory"></scale>
+        </format>
+        <format type="color" field="pszAttributeName">
+          <colorPalette type="sharedList"></colorPalette>
+          <scale type="sharedCategory"></scale>
+        </format>
+        <format type="color" field="DN">
+          <colorPalette type="sharedList"></colorPalette>
+          <scale type="sharedCategory"></scale>
+        </format>
+        <format type="color" field="OriginatingDC">
+          <colorPalette type="sharedList"></colorPalette>
+          <scale type="sharedCategory"></scale>
+        </format>
+        <drilldown>
+          <link target="_blank">search?q=index=$ad_index$%20host=$domain_host$%20sourcetype=adtimeline%20(pszAttributeName=%22Member%22%20AND%20dwVersion%20!=%200)%20OR%20(pszAttributeName=%22nTSecurityDescriptor%22%20%20AND%20dwVersion%20%3E=%202)%20%7C%20makemv%20pszLastOriginatingDsaDN%20delim=%22,CN=%22%20%7C%20eval%20OriginatingDC%20=%20mvindex(pszLastOriginatingDsaDN,%201,%201)%20%7C%20search%20$click.name2$%20=%20%22$click.value2$%22&amp;earliest=$time_token.earliest$&amp;latest=$time_token.latest$</link>
+        </drilldown>
+      </table>
+      <html depends="$show_html_memberoracl$">
+         <p style="font-weight: bold !important;font-size:14px">Timeline: No results</p>
+      </html>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <chart rejects="$show_html_aclobjclassstat$">
+        <title>ACL modifications by ObjectClass:</title>
+        <search>
+          <query>index=$ad_index$ host=$domain_host$ sourcetype=adtimeline  (pszAttributeName="nTSecurityDescriptor"  AND dwVersion &gt;= 2) NOT ObjectClass="System.DirectoryServices.ResultPropertyValueCollection" | makemv pszLastOriginatingDsaDN delim=",CN=" | eval OriginatingDC = mvindex(pszLastOriginatingDsaDN, 1, 1) | stats count by ObjectClass</query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+          <progress>
+            <condition match="$job.resultCount$ == 0">
+              <set token="show_html_aclobjclassstat">toto</set>
+            </condition>
+            <condition>
+              <unset token="show_html_aclobjclassstat"></unset>
+            </condition>
+          </progress>
+        </search>
+        <option name="charting.chart">pie</option>
+        <option name="charting.chart.sliceCollapsingThreshold">0</option>
+        <option name="charting.drilldown">all</option>
+        <option name="refresh.display">progressbar</option>
+        <drilldown>
+          <link target="_blank">search?q=index=$ad_index$%20host=$domain_host$%20sourcetype=adtimeline%20%20(pszAttributeName=%22nTSecurityDescriptor%22%20%20AND%20dwVersion%20%3E=%202)%20NOT%20ObjectClass=%22System.DirectoryServices.ResultPropertyValueCollection%22%20%7C%20makemv%20pszLastOriginatingDsaDN%20delim=%22,CN=%22%20%7C%20eval%20OriginatingDC%20=%20mvindex(pszLastOriginatingDsaDN,%201,%201)%20%7C%20search%20$click.name$%20=%20%22$click.value$%22&amp;earliest=$time_token.earliest$&amp;latest=$time_token.latest$</link>
+        </drilldown>
+      </chart>
+      <html depends="$show_html_aclobjclassstat$">
+         <p style="font-weight: bold !important;font-size:14px">ACL modifications by ObjectClass: No results</p>
+      </html>
+    </panel>
+    <panel>
+      <chart rejects="$show_html_memberbyversion$">
+        <title>Group membership modification by dwVersion:</title>
+        <search>
+          <progress>
+            <condition match="$job.resultCount$ == 0">
+              <set token="show_html_memberbyversion">toto</set>
+            </condition>
+            <condition>
+              <unset token="show_html_memberbyversion"></unset>
+            </condition>
+          </progress>
+          <query>index=$ad_index$ host=$domain_host$ sourcetype=adtimeline (pszAttributeName="Member" AND dwVersion != 0)  | makemv pszLastOriginatingDsaDN delim=",CN=" | eval OriginatingDC = mvindex(pszLastOriginatingDsaDN, 1, 1) | stats count by dwVersion</query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+        </search>
+        <option name="charting.chart">pie</option>
+        <option name="charting.chart.sliceCollapsingThreshold">0</option>
+        <option name="charting.drilldown">all</option>
+        <option name="refresh.display">progressbar</option>
+        <drilldown>
+          <link target="_blank">search?q=index=$ad_index$%20host=$domain_host$%20sourcetype=adtimeline%20(pszAttributeName=%22Member%22%20AND%20dwVersion%20!=%200)%20%20%7C%20makemv%20pszLastOriginatingDsaDN%20delim=%22,CN=%22%20%7C%20eval%20OriginatingDC%20=%20mvindex(pszLastOriginatingDsaDN,%201,%201)%20%7C%20search%20$click.name$%20=%20%22$click.value$%22&amp;earliest=$time_token.earliest$&amp;latest=$time_token.latest$</link>
+        </drilldown>
+      </chart>
+      <html depends="$show_html_memberbyversion$">
+         <p style="font-weight: bold !important;font-size:14px">Group membership modification by dwVersion: No results</p>
+      </html>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>GPOs modifications within timeframe:</title>
+      <table rejects="$show_html_gpomod$">
+        <title>Timeline:</title>
+        <search>
+          <query>index=$ad_index$ host=$domain_host$ sourcetype=adtimeline ObjectClass=groupPolicyContainer | join DN [search index=$ad_index$ host=$domain_host$ sourcetype="adobjects" ObjectClass=groupPolicyContainer earliest = 1 latest = now()  | rex field=_raw "gPCMachineExtensionNames\"&gt;(?&lt;gPCMachineExtensionNames&gt;.+?)&lt;/S&gt;" 
+| rex field=_raw "gPCUserExtensionNames\"&gt;(?&lt;gPCUserExtensionNames&gt;.+?)&lt;/S&gt;" 
+| rex field=gPCMachineExtensionNames "\[(?&lt;MachineCSEs&gt;\{.+?\})\]?" max_match=0 | rex field=gPCUserExtensionNames "\[(?&lt;UserCSEs&gt;\{.+?\})\]?" max_match=0 
+| eval AllCSEs=coalesce(MachineCSEs,UserCSEs) 
+|  dedup AllCSEs 
+|  lookup CSE_lookup GUID AS AllCSEs OUTPUTNEW CSE as ClientSideExtensions | fields DN, DisplayName, ClientSideExtensions] 
+|  join Name 
+    [search index=$ad_index$ host=$domain_host$ sourcetype="adobjects" (ObjectClass = "domainDNS" OR ObjectClass = "site" OR ObjectClass = "organizationalUnit") earliest = 1 latest = now() | rex field=_raw "gPLink\"&gt;(?&lt;gPLink&gt;.+?)&lt;/S&gt;" 
+ |  search  gPLink = "*" 
+|  rex field=gPLink "(CN|cn)\=(?&lt;Name&gt;\{.+?\})," max_match=0 
+| mvexpand Name
+|  stats values(DN) as gPLinks by Name 
+|  fields Name, gPLinks ] | makemv pszLastOriginatingDsaDN delim=",CN=" | eval OriginatingDC = mvindex(pszLastOriginatingDsaDN, 1, 1) |  table _time, DisplayName, pszAttributeName, dwVersion, ClientSideExtensions, gPLinks, Name, OriginatingDC 
+|  sort -_time</query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+          <progress>
+            <condition match="$job.resultCount$ == 0">
+              <set token="show_html_gpomod">toto</set>
+            </condition>
+            <condition>
+              <unset token="show_html_gpomod"></unset>
+            </condition>
+          </progress>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">cell</option>
+        <format type="color" field="dwVersion">
+          <colorPalette type="minMidMax" maxColor="#006D9C" minColor="#FFFFFF"></colorPalette>
+          <scale type="minMidMax"></scale>
+        </format>
+        <format type="color" field="pszAttributeName">
+          <colorPalette type="map">{"isDeleted":#AF575A,"whenCreated":#B6C75A}</colorPalette>
+        </format>
+        <format type="color" field="DisplayName">
+          <colorPalette type="sharedList"></colorPalette>
+          <scale type="sharedCategory"></scale>
+        </format>
+        <format type="color" field="OriginatingDC">
+          <colorPalette type="sharedList"></colorPalette>
+          <scale type="sharedCategory"></scale>
+        </format>
+        <drilldown>
+          <link target="_blank">search?q=index=$ad_index$%20host=$domain_host$%20sourcetype=adtimeline%20ObjectClass=groupPolicyContainer%20%7C%20join%20DN%20%5Bsearch%20index=$ad_index$%20host=$domain_host$%20sourcetype=%22adobjects%22%20ObjectClass=groupPolicyContainer%20earliest%20=%201%20latest%20=%20now()%20%20%7C%20rex%20field=_raw%20%22gPCMachineExtensionNames%5C%22%3E(%253F%3CgPCMachineExtensionNames%3E.%252B%253F)%3C/S%3E%22%20%0A%7C%20rex%20field=_raw%20%22gPCUserExtensionNames%5C%22%3E(%253F%3CgPCUserExtensionNames%3E.%252B%253F)%3C/S%3E%22%20%0A%7C%20rex%20field=gPCMachineExtensionNames%20%22%5C%5B(%253F%3CMachineCSEs%3E%5C%7B.%252B%253F%5C%7D)%5C%5D%253F%22%20max_match=0%20%7C%20rex%20field=gPCUserExtensionNames%20%22%5C%5B(%253F%3CUserCSEs%3E%5C%7B.%252B%253F%5C%7D)%5C%5D%253F%22%20max_match=0%20%0A%7C%20eval%20AllCSEs=coalesce(MachineCSEs,UserCSEs)%20%0A%7C%20%20dedup%20AllCSEs%20%0A%7C%20%20lookup%20CSE_lookup%20GUID%20AS%20AllCSEs%20OUTPUTNEW%20CSE%20as%20ClientSideExtensions%20%7C%20fields%20DN,%20DisplayName,%20ClientSideExtensions%5D%20%0A%7C%20%20join%20Name%20%0A%20%20%20%20%5Bsearch%20index=$ad_index$%20host=$domain_host$%20sourcetype=%22adobjects%22%20(ObjectClass%20=%20%22domainDNS%22%20OR%20ObjectClass%20=%20%22site%22%20OR%20ObjectClass%20=%20%22organizationalUnit%22)%20earliest%20=%201%20latest%20=%20now()%20%7C%20rex%20field=_raw%20%22gPLink%5C%22%3E(%253F%3CgPLink%3E.%252B%253F)%3C/S%3E%22%20%0A%20%7C%20%20search%20%20gPLink%20=%20%22*%22%20%0A%7C%20%20rex%20field=gPLink%20%22(CN%7Ccn)%5C=(%253F%3CName%3E%5C%7B.%252B%253F%5C%7D),%22%20max_match=0%20%0A%7C%20mvexpand%20Name%0A%7C%20%20stats%20values(DN)%20as%20gPLinks%20by%20Name%20%0A%7C%20%20fields%20Name,%20gPLinks%20%5D%20%7C%20makemv%20pszLastOriginatingDsaDN%20delim=%22,CN=%22%20%7C%20eval%20OriginatingDC%20=%20mvindex(pszLastOriginatingDsaDN,%201,%201)%20%7C%20search%20$click.name2$%20=%20%22$click.value2$%22&amp;earliest=$time_token.earliest$&amp;latest=$time_token.latest$</link>
+        </drilldown>
+      </table>
+      <html depends="$show_html_gpomod$">
+         <p style="font-weight: bold !important;font-size:14px">Timeline: No results</p>
+      </html>
+    </panel>
+  </row>
+</form>

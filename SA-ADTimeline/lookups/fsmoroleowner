@@ -1,0 +1,6 @@
+ObjectClass,FSMORole
+crossRefContainer,Domain Naming Master
+dMD,Schema Master
+domainDNS,PDC Emulator
+infrastructureUpdate,Infrastructure Master
+rIDManager,RID Manager

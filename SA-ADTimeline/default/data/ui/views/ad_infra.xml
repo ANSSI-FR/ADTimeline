@@ -1,0 +1,451 @@
+<form>
+  <label>Active Directory infrastructure</label>
+  <fieldset submitButton="false"></fieldset>
+  <row>
+    <panel>
+      <input type="dropdown" token="ad_index" searchWhenChanged="true">
+        <label>Choose index to process:</label>
+        <search>
+          <query>| tstats latest(_time) where index=*  by index</query>
+        </search>
+        <selectFirstChoice>true</selectFirstChoice>
+        <fieldForLabel>index</fieldForLabel>
+        <fieldForValue>index</fieldForValue>
+      </input>
+      <input type="dropdown" token="domain_host" searchWhenChanged="true">
+        <label>Choose AD Domain to process:</label>
+        <search>
+          <query>| tstats latest(_time) where index=$ad_index$ (sourcetype=adobjects OR sourcetype=gcobjects OR sourcetype=adtimeline)  by host</query>
+        </search>
+        <selectFirstChoice>true</selectFirstChoice>
+        <fieldForLabel>host</fieldForLabel>
+        <fieldForValue>host</fieldForValue>
+      </input>
+    </panel>
+    <panel>
+      <html>
+      <p style="text-align:center;">
+          <img src="/static/app/SA-ADTimeline/images/logo.png"/>
+        </p>
+      </html>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>General information:</title>
+      <html>
+        <style>
+          #SchemaVersion .single-value .single-result {
+          font-size:25px !important;
+          }
+
+        </style>
+     </html>
+      <single id="SchemaVersion">
+        <title>AD schema version, ObjectVersion attribute of dMD ObjectClass:</title>
+        <search>
+          <query>index=$ad_index$ host=$domain_host$ sourcetype=adobjects ObjectClass=dMD | rex field=_raw "objectVersion\"&gt;(?&lt;ObjectVersion&gt;.+?)&lt;/I32&gt;"  |  lookup Schema_lookup ObjectVersion AS ObjectVersion OUTPUTNEW SchemaVersion AS SchemaV | eval range = case ( ObjectVersion &lt; 48, "severe", ObjectVersion &lt; 69, "elevated" , ObjectVersion &lt; 1000 , "low" )</query>
+          <earliest>$earliest$</earliest>
+          <latest>$latest$</latest>
+        </search>
+        <option name="drilldown">all</option>
+        <option name="field">SchemaV</option>
+        <option name="rangeColors">["0x53a051","0x0877a6","0xf8be34","0xf1813f","0xdc4e41"]</option>
+        <option name="refresh.display">progressbar</option>
+        <drilldown>
+          <link target="_blank">search?q=index=$ad_index$%20host=$domain_host$%20(sourcetype=adobjects%20OR%20sourcetype=adtimeline)%20ObjectClass=dMD&amp;earliest=$earliest$&amp;latest=$latest$</link>
+        </drilldown>
+      </single>
+      <html tokens="true" encoded="true">
+        <![CDATA[
+          <br/>
+          ]]>
+      </html>
+      <chart>
+        <title>AD forest and domain functional level, msDS-Behavior-Version atribute:</title>
+        <search>
+          <query>index=$ad_index$ host=$domain_host$ sourcetype=adobjects  ObjectClass = "crossref" OR ObjectClass = "crossrefcontainer" | rex field=_raw "systemFlags\"&gt;(?&lt;systemFlags&gt;.+?)&lt;/I32&gt;" | search systemFlags = "3" OR ObjectClass = "crossrefcontainer" | rex field=_raw "msDS-Behavior-Version\"&gt;(?&lt;msDSBehaviorVersion&gt;.+?)&lt;/I32&gt;" | eval Name=case(Name == "Partitions", "FOREST FUNCTIONAL LEVEL", 1=1 , Name ) | stats count by msDSBehaviorVersion, Name</query>
+          <earliest>$earliest$</earliest>
+          <latest>$latest$</latest>
+        </search>
+        <option name="charting.axisTitleX.visibility">collapsed</option>
+        <option name="charting.axisTitleY.visibility">collapsed</option>
+        <option name="charting.axisTitleY2.visibility">collapsed</option>
+        <option name="charting.chart">fillerGauge</option>
+        <option name="charting.chart.rangeValues">[0,4,4.1,7]</option>
+        <option name="charting.chart.style">shiny</option>
+        <option name="charting.gaugeColors">["0xdc4e41","0xf8be34","0x53a051"]</option>
+        <option name="charting.legend.placement">none</option>
+        <option name="height">236</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="trellis.enabled">1</option>
+        <option name="trellis.size">small</option>
+        <option name="trellis.splitBy">Name</option>
+      </chart>
+      <html>
+       <p style="text-align:center;">Windows 2000=0 | Windows 2003 Interim=1 | Windows 2003=2 | Windows 2008=3 | Windows 2008R2=4 <br/> Windows 2012=5 | Windows 2012 R2=6 | Windows 2016=7 | Windows 2019=7</p>
+      </html>
+      <table>
+        <title>DCs in the current domain, computer ObjectClass:</title>
+        <search>
+          <query>index=$ad_index$ host=$domain_host$ sourcetype=adobjects OR sourcetype=gcobjects ObjectClass= "Computer" DN = "*,OU=Domain Controllers,*" |   eval eval_dc_bit = floor(userAccountControl / pow(2, 13)) %2 |  eval eval_rodc_bit = floor(userAccountControl / pow(2, 26)) %2 | search eval_dc_bit = 1 OR eval_rodc_bit = 1 | rex field=_raw "operatingSystem\"&gt;(?&lt;operatingSystem&gt;.+?)&lt;/S&gt;" | stats count by Name, operatingSystem, whenCreated  | rename Name as "DC name", operatingSystem  as "DC operating system", whenCreated as "DC creation time" |  table "DC name", "DC operating system", "DC creation time"</query>
+          <earliest>0</earliest>
+          <latest></latest>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">cell</option>
+        <format type="color" field="DC operating system">
+          <colorPalette type="sharedList"></colorPalette>
+          <scale type="sharedCategory"></scale>
+        </format>
+        <drilldown>
+          <link target="_blank">search?q=index=$ad_index$%20host=$domain_host$%20sourcetype=adobjects%20OR%20sourcetype=gcobjects%20OR%20sourcetype=adtimeline%20ObjectClass=%20%22Computer%22%20DN%20=%20%22*,OU=Domain%20Controllers,*%22&amp;earliest=$earliest$&amp;latest=$latest$</link>
+        </drilldown>
+      </table>
+      <table>
+        <title>FSMO roles, fSMORoleOwner attribute:</title>
+        <search>
+          <query>index=$ad_index$ host=$domain_host$ sourcetype=adobjects (ObjectClass= "DomainDNS" OR ObjectClass= "dMD" OR ObjectClass= "rIDManager" OR ObjectClass= "crossRefContainer" OR ObjectClass= "infrastructureUpdate") | rex field=_raw "&lt;S N=\"fSMORoleOwner\"&gt;CN=NTDS Settings,(?&lt;fsmoroleowner&gt;.+?)&lt;/S&gt;" |  lookup fsmo_lookup ObjectClass AS ObjectClass OUTPUTNEW FSMORole AS FSMORole | table FSMORole, fsmoroleowner, ObjectClass</query>
+          <earliest>$earliest$</earliest>
+          <latest>$latest$</latest>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">cell</option>
+        <option name="refresh.display">progressbar</option>
+        <drilldown>
+          <link target="_blank">search?q=index=$ad_index$%20host=$domain_host$%20(sourcetype=adobjects%20OR%20sourcetype=adtimeline)%20(ObjectClass=%20%22DomainDNS%22%20OR%20ObjectClass=%20%22dMD%22%20OR%20ObjectClass=%20%22rIDManager%22%20OR%20ObjectClass=%20%22crossRefContainer%22%20OR%20ObjectClass=%20%22infrastructureUpdate%22)%20OR%20%5Bsearch%20index%20=%20%22ad%22%20sourcetype=adobjects%20(ObjectClass=%20%22DomainDNS%22%20OR%20ObjectClass=%20%22dMD%22%20OR%20ObjectClass=%20%22rIDManager%22%20OR%20ObjectClass=%20%22crossRefContainer%22%20OR%20ObjectClass=%20%22infrastructureUpdate%22)%20%7C%20rex%20field=_raw%20%22%3CS%20N=%5C%22fSMORoleOwner%5C%22%3ECN=NTDS%20Settings,(%3F%3Cfsmoroleowner%3E.%2B%3F)%3C/S%3E%22%20%7C%20%20%20stats%20count%20by%20fsmoroleowner%20%7C%20eval%20DN%20=%20fsmoroleowner%20%7C%20table%20DN%5D&amp;earliest=$earliest$&amp;latest=$latest$</link>
+        </drilldown>
+      </table>
+    </panel>
+    <panel>
+      <title>Microsoft infrastructure products:</title>
+      <html>
+        <style>         
+		 #Exchangecheck .single-value .single-result {
+          font-size:25px !important;
+          }
+          #Exchangever .single-value .single-result {
+          font-size:25px !important;
+          }
+          #ADFSCheck .single-value .single-result {
+          font-size:25px !important;
+          }
+          #ADCSCheck .single-value .single-result {
+          font-size:25px !important;
+          }
+        </style>
+     </html>
+      <single id="Exchangecheck">
+        <title>Microsoft Exchange schema information, rangeUpper attribute of ms-Exch-Schema-Version-Pt object:</title>
+        <search>
+          <query>index=$ad_index$ host=$domain_host$ sourcetype=adobjects (ObjectClass=attributeSchema AND Name=ms-Exch-Schema-Version-Pt)  | table Name | appendpipe [stats count | eval "Name"="Void" | where count=0 | table "Name"] | eval checkExch =case(Name == "ms-Exch-Schema-Version-Pt", "Exchange installed in the AD forest", 1=1 , "Exchange not installed in the AD forest") | fields checkExch</query>
+          <earliest>$earliest$</earliest>
+          <latest>$latest$</latest>
+        </search>
+        <option name="drilldown">all</option>
+        <option name="height">50</option>
+        <option name="refresh.display">progressbar</option>
+        <drilldown>
+          <link target="_blank">search?q=index=$ad_index$%20host=$domain_host$%20(sourcetype=adobjects%20OR%20sourcetype=gcobjects%20OR%20sourcetype=adtimeline)%20((Name%20=%20%22Exchange%20Trusted%20Subsystem%22%20AND%20ObjectCategory=%20%22CN=Group,CN=Schema,CN=Configuration*%22)%20OR%20ObjectClass=%20%22msExchExchangeServer%22%20OR%20(ObjectClass=attributeSchema%20AND%20Name=ms-Exch-Schema-Version-Pt)%20)&amp;earliest=$earliest$&amp;latest=$latest$</link>
+        </drilldown>
+      </single>
+      <html tokens="true" encoded="true">
+        <![CDATA[
+          <br/>
+          ]]>
+      </html>
+      <single id="Exchangever">
+        <search>
+          <query>index=$ad_index$ host=$domain_host$ sourcetype=adobjects (ObjectClass=attributeSchema AND Name=ms-Exch-Schema-Version-Pt)  | rex field=_raw "rangeUpper\"&gt;(?&lt;rangeUpper&gt;.+?)&lt;/I32&gt;" |  lookup ExchangeSchema_lookup rangeUpper AS rangeUpper OUTPUTNEW Exchange AS ExchangeV | stats count by ExchangeV, rangeUpper | rangemap field=rangeUpper low=15331-1000000 elevated=15312-15331 default=severe</query>
+          <earliest>$earliest$</earliest>
+          <latest>$latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="height">50</option>
+        <option name="refresh.display">progressbar</option>
+      </single>
+      <table rejects="$show_html_msExch$">
+        <title>Microsoft Exchange servers, msExchExchangeServer ObjectClass:</title>
+        <search>
+          <query>index=$ad_index$ host=$domain_host$ sourcetype=adobjects ObjectClass=msExchExchangeServer  | rex field=_raw "&lt;S&gt;Version (?&lt;ExchVersion&gt;.+?)&lt;/S&gt;" | stats count by Name, ExchVersion, whenCreated  | rename Name as "Exchange server name", ExchVersion as "Exchange server version", whenCreated as "Exchange server creation time" |  table "Exchange server name", "Exchange server version", "Exchange server creation time"</query>
+          <earliest>0</earliest>
+          <latest></latest>
+          <progress>
+            <condition match="$job.resultCount$ == 0">
+              <set token="show_html_msExch">toto</set>
+            </condition>
+            <condition>
+              <unset token="show_html_msExch"></unset>
+            </condition>
+          </progress>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">cell</option>
+        <format type="color" field="Exchange server version">
+          <colorPalette type="sharedList"></colorPalette>
+          <scale type="sharedCategory"></scale>
+        </format>
+        <drilldown>
+          <link target="_blank">search?q=index=$ad_index$%20host=$domain_host$%20(sourcetype=adobjects%20OR%20sourcetype=gcobjects%20OR%20sourcetype=adtimeline)%20ObjectClass=msExchExchangeServer&amp;earliest=$earliest$&amp;latest=$latest$</link>
+        </drilldown>
+      </table>
+      <html depends="$show_html_msExch$">
+         <p style="font-weight: bold !important;font-size:14px">Microsoft Exchange servers, msExchExchangeServer ObjectClass: No results</p>
+      </html>
+      <html tokens="true" encoded="true">
+        <![CDATA[
+          <br/>
+          ]]>
+      </html>
+      <single id="ADFSCheck">
+        <title>Microsoft ADFS Information, ADFS container:</title>
+        <search>
+          <query>index=$ad_index$ host=$domain_host$ sourcetype=adobjects OR sourcetype=gcobjects (DN ="CN=ADFS,CN=Microsoft,CN=Program Data*")   | table Name | appendpipe [stats count | eval "Name"="Void" | where count=0 | table "Name"] | eval checkADFS =case(Name == "ADFS", "ADFS installed in the AD Forest", 1=1 , "ADFS not installed in the AD forest") | fields checkADFS</query>
+          <earliest>$earliest$</earliest>
+          <latest>$latest$</latest>
+        </search>
+        <option name="drilldown">all</option>
+        <option name="refresh.display">progressbar</option>
+        <drilldown>
+          <link target="_blank">search?q=index=$ad_index$%20host=$domain_host$%20sourcetype=adobjects%20OR%20sourcetype=gcobjects%20OR%20sourcetype=adtimeline%20(DN%20=%22*CN=ADFS,CN=Microsoft,CN=Program%20Data*%22)&amp;earliest=$earliest$&amp;latest=$latest$</link>
+        </drilldown>
+      </single>
+      <html tokens="true" encoded="true">
+        <![CDATA[
+          <br/>
+          ]]>
+      </html>
+      <table id="ADCSCheck">
+        <title>Microsoft ADCS information, certificationAuthority ObjectClass:</title>
+        <search>
+          <query>index=$ad_index$ host=$domain_host$ sourcetype=adobjects ObjectClass=certificationAuthority (DN ="*,CN=Certification Authorities,CN=Public Key Services,CN=Services,*" OR DN ="*CN=NTAuthCertificates,CN=Public Key Services,CN=Services,CN=Configuration,*")   |  table ObjectClass, DN, Name | appendpipe [stats count | eval "ObjectClass"="Void", "DN"="Void", "Name"="Void"  | where count=0 | table "ObjectClass"] | eval CAName = "\"" + Name + "\" entreprise CA configured" | eval checkEntCA =case(ObjectClass == "certificationAuthority" AND DN LIKE "%CN=Certification Authorities%", CAName,  ObjectClass == "certificationAuthority" AND DN LIKE "%CN=NTAuthCertificates,%" , " NTAuthCertificates for smartcard logon configured" , 1=1 , "No CA configured")   | stats values(checkEntCA) as checkEntCA | mvexpand checkEntCA | rename checkEntCA as "Cert Authorities configured"</query>
+          <earliest>$earliest$</earliest>
+          <latest>$latest$</latest>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">cell</option>
+        <option name="refresh.display">progressbar</option>
+        <drilldown>
+          <link target="_blank">search?q=index=$ad_index$%20host=$domain_host$%20sourcetype=adobjects%20OR%20sourcetype=gcobjects%20OR%20sourcetype=adtimeline%20ObjectClass=certificationAuthority&amp;earliest=$earliest$&amp;latest=$latest$</link>
+        </drilldown>
+      </table>
+      <table rejects="$show_html_adcs1$">
+        <title>ADCS Enrollment servers, pKIEnrollmentService ObjectClass:</title>
+        <search>
+          <query>index=$ad_index$ host=$domain_host$ sourcetype=adobjects ObjectClass=pKIEnrollmentService  | rex field=_raw "cACertificateDN\"&gt;(?&lt;cACertificateDN&gt;.+?)&lt;/S&gt;"  | stats count by dNSHostName, cACertificateDN, whenCreated  | rename dNSHostName as "ADCS server name", cACertificateDN as "CA Name", whenCreated as "ADCS server installation time" |  table "ADCS server name", "CA Name" , "ADCS server installation time"</query>
+          <earliest>$earliest$</earliest>
+          <latest>$latest$</latest>
+          <progress>
+            <condition match="$job.resultCount$ == 0">
+              <set token="show_html_adcs1">toto</set>
+            </condition>
+            <condition>
+              <unset token="show_html_adcs1"></unset>
+            </condition>
+          </progress>
+        </search>
+        <option name="count">10</option>
+        <option name="dataOverlayMode">none</option>
+        <option name="refresh.display">progressbar</option>
+        <drilldown>
+          <link target="_blank">search?q=index=$ad_index$%20host=$domain_host$%20(sourcetype=adobjects%20OR%20sourcetype=gcobjects%20OR%20sourcetype=adtimeline)%20ObjectClass=pKIEnrollmentService&amp;earliest=$earliest$&amp;latest=$latest$</link>
+        </drilldown>
+      </table>
+      <html depends="$show_html_adcs1$">
+         <p style="font-weight: bold !important;font-size:14px">ADCS Enrollment servers, pKIEnrollmentService ObjectClass: No results</p>
+      </html>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Domain Trusts:</title>
+      <chart rejects="$show_html_trust1$">
+        <title>Trusts types, trustedDomain objectClass:</title>
+        <search>
+          <query>index=$ad_index$ host=$domain_host$ sourcetype=adobjects ObjectClass=trustedDomain | rex field=_raw "trustAttributes\"&gt;(?&lt;trustAttributes&gt;.+?)&lt;/I32&gt;" | rex field=_raw "trustDirection\"&gt;(?&lt;trustDirection&gt;.+?)&lt;/I32&gt;" | eval trust=case( floor(trustAttributes / pow(2, 5)) %2 == 1 , "Forest internal", (trustAttributes / pow(2, 2)) %2 == 1 , "Quarantined domain - SID filtering enabled",  (trustAttributes / pow(2, 6)) %2 == 1 , "Treat as external trust - SID history enabled" , 1=1 , "Other type of trust") | eval direction = case(trustDirection == 0, "disabled", trustDirection == 1, "inbound", trustDirection == 2, "outbound", 1=1, "bidirectional") | eval trusttype = trust + "-" + direction |  stats count  as "Trust types"  by trusttype</query>
+          <earliest>$earliest$</earliest>
+          <latest>$latest$</latest>
+          <progress>
+            <condition match="$job.resultCount$ == 0">
+              <set token="show_html_trust1">toto</set>
+            </condition>
+            <condition>
+              <unset token="show_html_trust1"></unset>
+            </condition>
+          </progress>
+        </search>
+        <option name="charting.axisTitleX.visibility">visible</option>
+        <option name="charting.axisTitleY.visibility">visible</option>
+        <option name="charting.axisTitleY2.visibility">visible</option>
+        <option name="charting.chart">pie</option>
+        <option name="charting.chart.sliceCollapsingThreshold">0.01</option>
+        <option name="charting.drilldown">all</option>
+        <option name="charting.legend.placement">right</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="trellis.enabled">0</option>
+        <option name="trellis.splitBy">_aggregation</option>
+        <drilldown>
+          <link target="_blank">search?q=index=$ad_index$%20host=$domain_host$%20sourcetype=adobjects%20%20ObjectClass=trustedDomain%20%7C%20rex%20field=_raw%20%22trustAttributes%5C%22%3E(%3F%3CtrustAttributes%3E.%2B%3F)%3C/I32%3E%22%20%7C%20rex%20field=_raw%20%22trustDirection%5C%22%3E(%3F%3CtrustDirection%3E.%2B%3F)%3C/I32%3E%22%20%7C%20eval%20trust=case(%20floor(trustAttributes%20/%20pow(2,%205))%20%252%20==%201%20,%20%22Forest%20internal%22,%20(trustAttributes%20/%20pow(2,%202))%20%252%20==%201%20,%20%22Quarantined%20domain%20-%20SID%20filtering%20enabled%22,%20%20(trustAttributes%20/%20pow(2,%206))%20%252%20==%201%20,%20%22Treat%20as%20external%20trust%20-%20SID%20history%20enabled%22%20,%201=1%20,%20%22Other%20type%20of%20trust%22)%20%7C%20eval%20direction%20=%20case(trustDirection%20==%200,%20%22disabled%22,%20trustDirection%20==%201,%20%22inbound%22,%20trustDirection%20==%202,%20%22outbound%22,%201=1,%20%22bidirectional%22)%20%7C%20eval%20trusttype%20=%20trust%20%2B%20%22-%22%20%2B%20direction%20%0A%7C%20%20search%20$click.name$%20=%20%22$click.value$%22&amp;earliest=$earliest$&amp;latest=$latest$</link>
+        </drilldown>
+      </chart>
+      <html depends="$show_html_trust1$">
+         <p style="font-weight: bold !important;font-size:14px">Trusts types, trustedDomain objectClass: No results</p>
+      </html>
+      <table rejects="$show_html_trust2$">
+        <title>Trusts list, trustedDomain objectClass:</title>
+        <search>
+          <query>index=$ad_index$ host=$domain_host$ sourcetype=adobjects ObjectClass=trustedDomain | rex field=_raw "trustAttributes\"&gt;(?&lt;trustAttributes&gt;.+?)&lt;/I32&gt;" | rex field=_raw "trustDirection\"&gt;(?&lt;trustDirection&gt;.+?)&lt;/I32&gt;"  | rex field=_raw "AccountDomainSid\"&gt;(?&lt;AccountDomainSid&gt;.+?)&lt;/S&gt;" | eval trust = mvappend ( if ( floor(trustAttributes / pow(2, 0)) %2 == 1 , "Non transitive" , null() ), if ( floor(trustAttributes / pow(2, 1)) %2 == 1 , "Uplevel only" , null() ) , if ( floor(trustAttributes / pow(2, 2)) %2 == 1 , "Quarantined domain - SID filtering enabled" , null() ) , if ( floor(trustAttributes / pow(2, 3)) %2 == 1 , "Forest Transitive" , null() ) , if ( floor(trustAttributes / pow(2, 4)) %2 == 1 , "Cross org trust" , null() ) , if ( floor(trustAttributes / pow(2, 5)) %2 == 1 , "Forest internal" , null() ), if ( floor(trustAttributes / pow(2, 6)) %2 == 1 , "Treat as external trust - SID history enabled" , null() ), if ( floor(trustAttributes / pow(2, 7)) %2 == 1 , "Uses RC4 encryption" , null() ) , if ( floor(trustAttributes / pow(2, 8)) %2 == 1 , "Uses AES encryption" , null() ) , if ( floor(trustAttributes / pow(2, 9)) %2 == 1 , "Cross org trust with no TGT delegation" , null() )  , if ( floor(trustAttributes / pow(2, 10)) %2 == 1 , "Treat as external trust with Privileged Identity Management" , null() ))    | eval direction = case(trustDirection == 0, "disabled", trustDirection == 1, "inbound", trustDirection == 2, "outbound", 1=1, "bidirectional") | rename Name as "Trust partner", AccountDomainSid as "Trust partner SID", trust as "trust type", whenCreated as "trust creation time", direction as "trust direction" | table "Trust partner", trustAttributes, "trust direction", "trust type", "trust creation time", "Trust partner SID"</query>
+          <earliest>$earliest$</earliest>
+          <latest>$latest$</latest>
+          <progress>
+            <condition match="$job.resultCount$ == 0">
+              <set token="show_html_trust2">toto</set>
+            </condition>
+            <condition>
+              <unset token="show_html_trust2"></unset>
+            </condition>
+          </progress>
+        </search>
+        <option name="count">10</option>
+        <option name="dataOverlayMode">none</option>
+        <format type="color" field="trust direction">
+          <colorPalette type="sharedList"></colorPalette>
+          <scale type="sharedCategory"></scale>
+        </format>
+        <format type="color" field="trust type">
+          <colorPalette type="sharedList"></colorPalette>
+          <scale type="sharedCategory"></scale>
+        </format>
+        <drilldown>
+          <link target="_blank">search?q=index=$ad_index$%20host=$domain_host$%20(sourcetype=adobjects%20OR%20sourcetype=gcobjects%20OR%20sourcetype=adtimeline)%20ObjectClass=TrustedDomain&amp;earliest=$earliest$&amp;latest=$latest$</link>
+        </drilldown>
+      </table>
+      <html depends="$show_html_trust2$">
+         <p style="font-weight: bold !important;font-size:14px">Trusts list, trustedDomain objectClass: No results</p>
+      </html>
+    </panel>
+    <panel>
+      <title>ADDS security features:</title>
+      <html>
+        <style>         
+		 #RecycleCheck .single-value .single-result {
+          font-size:25px !important;
+          }
+          #LAPSCheck .single-value .single-result {
+          font-size:25px !important;
+          }
+          #SiloCheck .single-value .single-result {
+          font-size:25px !important;
+          }
+          #ProtectedGroups .single-value .single-result {
+          font-size:25px !important;
+          }
+        </style>
+     </html>
+      <single id="RecycleCheck">
+        <title>Recycle bin, crossRefContainer objectClass:</title>
+        <search>
+          <query>index=$ad_index$   host=$domain_host$  ObjectClass = "crossRefContainer" sourcetype=adobjects DN = "CN=Partitions,CN=Configuration,*"    | rex field=_raw "&lt;S&gt;(?&lt;optionalfeature&gt;.+?)&lt;/S&gt;" | eval Recycle =case(optionalfeature like "%Recycle Bin Feature%", "Recycle Bin feature is enabled"), Recyclevalue =case(optionalfeature like "%Recycle Bin Feature%", 1) | fillnull Recycle value="Recycle Bin feature is disabled"| fillnull Recyclevalue value=0 | table Recycle, Recyclevalue | stats count by Recycle, Recyclevalue | rangemap field=Recyclevalue low=1-2 default=severe</query>
+          <earliest>$earliest$</earliest>
+          <latest>$latest$</latest>
+        </search>
+        <option name="drilldown">all</option>
+        <option name="height">50</option>
+        <option name="refresh.display">progressbar</option>
+        <drilldown>
+          <link target="_blank">search?q=index=$ad_index$%20host=$domain_host$%20(sourcetype=adobjects%20OR%20sourcetype=gcobjects%20OR%20sourcetype=adtimeline)%20ObjectClass=crossRefContainer&amp;earliest=$earliest$&amp;latest=$latest$</link>
+        </drilldown>
+      </single>
+      <html tokens="true" encoded="true">
+        <![CDATA[
+          <br/>
+          ]]>
+      </html>
+      <single id="LAPSCheck">
+        <title>LAPS, attributeSchema objectClass:</title>
+        <search>
+          <query>index=$ad_index$  host=$domain_host$  sourcetype=adobjects ObjectClass=attributeSchema Name=ms-Mcs-AdmPwd   | table Name | appendpipe [stats count | eval "Name"="Void" | where count=0 | table "Name"] | eval LAPS =case(Name == "ms-Mcs-AdmPwd", "LAPS schema extension done", 1=1, "Schema not setup for LAPS"), LAPSValue = case(Name == "ms-Mcs-AdmPwd", 1, 1=1 ,0) | stats count by LAPS, LAPSValue | rangemap field=LAPSValue low=1-2 default=elevated</query>
+          <earliest>$earliest$</earliest>
+          <latest>$latest$</latest>
+        </search>
+        <option name="drilldown">all</option>
+        <option name="height">50</option>
+        <option name="refresh.display">progressbar</option>
+        <drilldown>
+          <link target="_blank">search?q=index=$ad_index$%20host=$domain_host$%20(sourcetype=adobjects%20OR%20sourcetype=gcobjects%20OR%20sourcetype=adtimeline)%20ObjectClass=attributeSchema%20Name=ms-Mcs-AdmPwd&amp;earliest=$earliest$&amp;latest=$latest$</link>
+        </drilldown>
+      </single>
+      <html tokens="true" encoded="true">
+        <![CDATA[
+          <br/>
+          ]]>
+      </html>
+      <single id="SiloCheck">
+        <title>Authentication silos, msDS-AuthNPolicySilo and msDS-AuthNPolicy objectClass:</title>
+        <search>
+          <query>index=$ad_index$  host=$domain_host$  sourcetype=adobjects (ObjectClass=msDS-AuthNPolicySilo OR ObjectClass=msDS-AuthNPolicy)  | table ObjectClass | appendpipe [stats count | eval "ObjectClass"="Void" | where count=0 | table "ObjectClass"] | eval Silo =case(ObjectClass == "msDS-AuthNPolicy" OR ObjectClass == "msDS-AuthNPolicySilo" , "Authentication silos configured, check also if DFL is greater or equal 6", 1=1, "No authentication silos configured"), SiloValue = case(ObjectClass == "msDS-AuthNPolicy" OR ObjectClass == "msDS-AuthNPolicySilo", 1, 1=1 ,0) | stats count by Silo, SiloValue | rangemap field=SiloValue low=1-2 default=elevated</query>
+          <earliest>$earliest$</earliest>
+          <latest>$latest$</latest>
+        </search>
+        <option name="drilldown">all</option>
+        <option name="height">50</option>
+        <option name="refresh.display">progressbar</option>
+        <drilldown>
+          <link target="_blank">search?q=index=$ad_index$%20host=$domain_host$%20(sourcetype=adobjects%20OR%20sourcetype=gcobjects%20OR%20sourcetype=adtimeline)%20(ObjectClass=msDS-AuthNPolicySilo%20OR%20ObjectClass=msDS-AuthNPolicy)&amp;earliest=$earliest$&amp;latest=$latest$</link>
+        </drilldown>
+      </single>
+      <html tokens="true" encoded="true">
+        <![CDATA[
+          <br/>
+          ]]>
+      </html>
+      <single id="ProtectedGroups">
+        <title>Protected Users group, memberOf attribute:</title>
+        <search>
+          <query>index=$ad_index$  host=$domain_host$  sourcetype=adobjects MemberOf = "*CN=Protected Users,CN=Users*" | stats count | eval Protected= if(count &gt; 0,"Protected users group has members, check also DFL","Protected users group has no members"), ProtectedValue= if(count &gt; 0,1,0) | stats count by Protected, ProtectedValue | rangemap field=ProtectedValue low=1-2 default=elevated</query>
+          <earliest>$earliest$</earliest>
+          <latest>$latest$</latest>
+        </search>
+        <option name="drilldown">all</option>
+        <option name="height">50</option>
+        <option name="rangeColors">["0x53a051","0x0877a6","0xf8be34","0xf1813f","0xdc4e41"]</option>
+        <option name="refresh.display">progressbar</option>
+        <drilldown>
+          <link target="_blank">search?q=index=$ad_index$%20%20host=$domain_host$%20%20sourcetype=adobjects%20MemberOf%20=%20%22*CN=Protected%20Users,CN=Users*%22&amp;earliest=$earliest$&amp;latest=$latest$</link>
+        </drilldown>
+      </single>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Active Directory infrastructure timeline:</title>
+      <table>
+        <search>
+          <query>index=$ad_index$ host=$domain_host$ sourcetype=adtimeline ((ObjectClass=DomainDNS OR (ObjectClass=container AND Name="AdminSDHolder")) AND (pszAttributeName = "whencreated" OR pszAttributeName = "ntsecuritydescriptor" OR pszAttributeName = "fsmoRoleOwner")) OR (ObjectClass=crossref AND pszAttributeName="msDS-Behavior-Version") OR (Name = "Exchange Trusted Subsystem" AND ObjectCategory="CN=Group,CN=Schema,CN=Configuration*" AND (pszAttributeName = "whencreated" OR pszAttributeName = "msExchGroupMemberCount")) OR (ObjectClass= "dMD" AND (pszAttributeName= "objectVersion" OR pszAttributeName= "fsmoRoleOwner")) OR (((ObjectClass= "infrastructureUpdate" AND Name= "infrastructure") OR ObjectClass= "rIDManager" OR (ObjectClass= "crossRefContainer" AND Name= "Partitions")) AND (pszAttributeName = "fsmoRoleOwner" OR pszAttributeName = "optionalfeature")) OR (ObjectClass= "trustedDomain" AND pszAttributeName = "whencreated") OR (ObjectClass = "container" AND DN = "CN=ADFS,CN=Microsoft,CN=Program Data*" AND pszAttributeName = "whencreated") OR ( ObjectClass = "msExchSystemObjectsContainer" AND Name = "Microsoft Exchange System Objects" AND  pszAttributeName = "ObjectVersion") OR (ObjectClass = "attributeSchema" AND  Name=ms-Mcs-AdmPwd AND pszAttributeName = "whencreated") OR ((ObjectClass = "msDS-AuthNPolicySilo" OR  ObjectClass = "msDS-AuthNPolicy") AND pszAttributeName = "whencreated") OR (ObjectClass = "certificationAuthority" AND ((DN ="*,CN=Certification Authorities,CN=Public Key Services,CN=Services,*"  AND pszAttributeName = "whencreated") OR (DN ="*CN=NTAuthCertificates,CN=Public Key Services,CN=Services,CN=Configuration,*" AND pszAttributeName = "cACertificate"))) OR (ObjectClass = "attributeSchema" AND Name = "ms-Exch-Schema-Version-Pt" AND pszAttributeName = "rangeUpper") |  makemv pszLastOriginatingDsaDN delim=",CN=" | eval OriginatingDC = mvindex(pszLastOriginatingDsaDN, 1, 1) | table _time, DN, ObjectClass, pszAttributeName, dwVersion, OriginatingDC  | sort -_time</query>
+          <earliest>0</earliest>
+          <latest></latest>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">cell</option>
+        <format type="color" field="dwVersion">
+          <colorPalette type="minMidMax" maxColor="#006D9C" minColor="#FFFFFF"></colorPalette>
+          <scale type="minMidMax"></scale>
+        </format>
+        <format type="color" field="pszAttributeName">
+          <colorPalette type="map">{"whenCreated":#B6C75A}</colorPalette>
+        </format>
+        <format type="color" field="OriginatingDC">
+          <colorPalette type="sharedList"></colorPalette>
+          <scale type="sharedCategory"></scale>
+        </format>
+        <format type="color" field="ObjectClass">
+          <colorPalette type="sharedList"></colorPalette>
+          <scale type="sharedCategory"></scale>
+        </format>
+        <drilldown>
+          <link target="_blank">search?q=index=$ad_index$%20host=$domain_host$%20sourcetype=adtimeline%20((ObjectClass=DomainDNS%20OR%20(ObjectClass=container%20AND%20Name=%22AdminSDHolder%22)%20OR%20ObjectClass=%22crossref%22%20OR%20(Name%20=%20%22Exchange%20Trusted%20Subsystem%22%20AND%20ObjectCategory=%22CN=Group,CN=Schema,CN=Configuration*%22)%20OR%20ObjectClass=%20%22dMD%22%20OR%20(ObjectClass=%20%22infrastructureUpdate%22%20AND%20Name=%20%22infrastructure%22)%20OR%20ObjectClass=%20%22trustedDomain%22%20OR%20(ObjectClass%20=%20%22container%22%20AND%20DN%20=%20%22CN=ADFS,CN=Microsoft,CN=Program%20Data*%22)%20OR%20(%20ObjectClass%20=%20%22msExchSystemObjectsContainer%22%20AND%20Name%20=%20%22Microsoft%20Exchange%20System%20Objects%22)%20OR%20(ObjectClass%20=%20%22attributeSchema%22%20AND%20%20Name=ms-Mcs-AdmPwd)%20OR%20ObjectClass%20=%20%22msDS-AuthNPolicySilo%22%20OR%20%20ObjectClass%20=%20%22msDS-AuthNPolicy%22%20OR%20ObjectClass%20=%20%22certificationAuthority%22%20%20OR%20(ObjectClass%20=%20%22attributeSchema%22%20AND%20Name%20=%20%22ms-Exch-Schema-Version-Pt%22%20)))%20%7C%20%20%20%20%20makemv%20pszLastOriginatingDsaDN%20delim=%22,CN=%22%20%7C%20eval%20OriginatingDC%20=%20mvindex(pszLastOriginatingDsaDN,%201,%201)%20%20%0A%7C%20%20search%20$click.name2$%20=%20%22$click.value2$%22&amp;earliest=0&amp;latest=</link>
+        </drilldown>
+      </table>
+    </panel>
+  </row>
+</form>

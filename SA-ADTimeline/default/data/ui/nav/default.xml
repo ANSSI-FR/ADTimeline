@@ -1,0 +1,15 @@
+<nav search_view="search" color="#2B2BA1">
+  <view name="search" default='true' />
+  <view name="getting_started" />
+  <collection label="AD General information">
+  <view name="ad_infra" />
+  <view name="sensitive_accounts" />
+  </collection>
+  <collection label="AD Threat hunting">
+  <view name="investigate_timeframe" />
+  <view name="suspicious_activity" />
+  </collection>
+  <view name="datasets" />
+  <view name="reports" />
+  <a href="https://github.com/ANSSI-FR/ADTimeline">ADTimeline on github</a>
+</nav>

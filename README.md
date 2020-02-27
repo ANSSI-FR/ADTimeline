@@ -1,11 +1,20 @@
 ![ADTimeline](./logo.png)
 ---
-## Table of contents:
-1. [Description](#description)
-2. [Prerequisites](#prerequisites)
-3. [Usage](#usage)
-4. [Files generated](#files)
-5. [Custom groups](#groups)
+# Table of contents:
+1. [The ADTimeline PowerShell script](#thescript)
+    1. [Description](#description)
+    2. [Prerequisites](#prerequisites)
+    3. [Usage](#usage)
+    4. [Files generated](#files)
+    5. [Custom groups](#groups)
+2. [The ADTimeline App for Splunk](#theapp)
+    1. [Description](#descriptionsplk)
+    2. [Sourcetypes](#sourcetype)
+    3. [AD General information dashboards](#infradashboards)
+    4. [AD threat hunting dashboards](#threathuntdashboards)
+
+# The ADTimeline PowerShell script:  <a name="thescript"></a>
+
 ## Description: <a name="description"></a>
 
 The ADTimeline script generates a timeline based on Active Directory replication metadata for objects considered of interest.  
@@ -86,12 +95,13 @@ Output files are generated in the current directory:
 - gcADobjects_%DOMAINFQDN%.xml: Objects of interest retrieved via the Global Catalog.
 
 
-To import files for analysis with powershell.
+To import files for analysis with powershell. 
 ```powershell
 PS> import-csv timeline_%DOMAINFQDN%.csv -delimiter ";"
 PS> import-clixml ADobjects_%DOMAINFQDN%.xml
 PS> import-clixml gcADobjects_%DOMAINFQDN%.xml
 ```
+The analysis with the ADTimeline for Splunk is a better solution.
 
 ## Custom groups <a name="groups"></a>
 
@@ -111,3 +121,138 @@ If you do not want to use a parameter you can also uncomment and edit the follow
 $groupscustom = ("VIP-group1","ESX-Admis","Tier1-admins")
 ```
 
+# The ADTimeline App for Splunk: <a name="theapp"></a>
+
+## Description: <a name="descriptionsplk"></a>
+
+The ADTimeline application for Splunk processes and analyses the Active Directory data collected by the ADTimeline PowerShell script.
+
+The app's "Getting started" page will give you the instructions for the import process.
+
+Once indexed the dashboards provided by the app will help the DFIR analyst to spot some Acitve Directory persistence mechanisms, misconfigurations, security audit logging bypass, mail exfiltration, brute force attacks ...
+
+![Splunkapp](./SA-ADTimeline.png)
+
+## Sourcetypes: <a name="sourcetype"></a>
+
+After processing the ADTimeline script you should have two or three files to import in Splunk (%DOMAINFQDN% is the Active Directory fully qualified domain name):
+
+- timeline_%DOMAINFQDN%.csv: The timeline generated with the AD replication metadata of objects retrieved. The corresponding source type is *adtimeline*.
+- ADobjects_%DOMAINFQDN%.xml: Objects of interest retrieved via LDAP. The corresponding sourcetype is *adobjects*.
+- gcADobjects_%DOMAINFQDN%.xml: If any, objects of interest retrieved via the Global Catalog. The corresponding source type is *gcobjects*.
+
+### The adtimeline sourcetype:
+
+ The *adtimeline* sourcetype is the data from the timeline_%DOMAINFQDN%.csv file, which is the Active Directory timeline built with replication metadata for objects considered of interest.
+
+The timestamp value is the ftimeLastOriginatingChange value of the replication metadata, which is the time the attribute was last changed, time is UTC.
+
+The extracted fields are:
+
+- Name: LDAP object name.
+- pszAttributeName: The attribute name.
+- dwVersion: Counter incremented every time the attribute is changed.
+- DN: LDAP object DistinguishedName.
+- WhenCreated: LDAP object creation time.
+- ObjectClass and ObjectCategory: LDAP object type (user, computer, group...)
+- SamAccountName and SID: Account Name and security identifier, only applies to users, computers and groups.
+- usnOriginatingChange: USN on the originating server at which the last change to this attribute was made.
+- pszLastOriginatingDsaDN: DC on which the last change was made to this attribute.
+- uuidLastOriginatingDsaInvocationID: ID corresponding to the pszLastOriginatingDsaDN.
+- usnLocalChange: USN on the destination server (the server your LDAP bind is made) at which the last change to this attribute was applied.
+- Member: Only applies to the group ObjectClass and when the attribute name is member. Contains the value of the group member DistinguishedName.
+- ftimeCreated: Only applies to group ObjectClass and when the attribute name is member. Contains the time the member was added in the group.
+- ftimeDeleted: Only applies to group ObjectClass and when the attribute name is member. Contains the time the member was removed from the group.
+
+### The adobjects sourcetype:
+
+The *adobjects* sourcetype is the data from the ADobjects_%DOMAINFQDN%.xml file, which is an export of the Active Directory objects considered of interested and retrieved via the LDAP protocol.
+
+The timestamp value is the createTimeStamp attribute value, time zone is specified in the attribute value.
+
+The extracted fields are:
+
+- Name: LDAP object name.
+- DN: LDAP object DistinguishedName.
+- DisplayName: LDAP object displayname.
+- WhenCreated: LDAP object creation time.
+- ObjectClass and ObjectCategory: LDAP object type (user, computer, group...)
+- SamAccountName and SID: Account Name and security identifier, only applies to users, computers and groups.
+- Members and MemberOf: Members of a group ObjectClass can be users, computers or groups and its linked attribute MemberOf which applies to groups, users and computers.
+- Owner, AccessToString and SDDL: Are values computed from the nTSecurityDescriptor attribute
+- adminCount: Privileged accounts protected by the SDProp process.
+- userAccountControl: Attribute which contains a range of flags which define some important basic properties of a computer or user object.
+- lastLogonTimestamp: This attribute is not updated with all logon types or at every logon but is replicated and gives you an idea of wether a user or computer account has recently logged on to the domain.
+- dNSHostName: DNS hostname attribute of a computer account.
+- SPNs: List of Service Principal Names of a computer or user account.
+
+### The gcobjects sourcetype:
+
+The *gcobjects* sourcetype is the data from the gcADobjects_%DOMAINFQDN%.xml file, which is an export of the Active Directory objects within the forest but outside the current domain and considered of interested, those objects are retrieved via the Global Catalog protocol.
+
+The timestamp value is the WhenCreated attribute value, time zone is UTC.
+
+The extracted fields are:
+
+- Name: LDAP object name.
+- DN: LDAP object DistinguishedName.
+- DisplayName: LDAP object displayname.
+- WhenCreated: LDAP object creation time.
+- ObjectClass and ObjectCategory: LDAP object type (user, computer, group...)
+- SamAccountName and SID: Account Name and security identifier, only applies to users, computers and groups.
+- userAccountControl: Attribute which contains a range of flags which define some important basic properties of a computer or user object.
+- lastLogonTimestamp: This attribute is not updated with all logon types or at every logon but is replicated and gives you an idea if a user or computer account has recently logged onto the domain.
+- dNSHostName: DNS hostname attribute of a computer account.
+- SPNs: List of Service Principal Names of a computer or user account.
+
+## AD General information dashboards: <a name="infradashboards"></a>
+
+### The Active Directory Infrastructure dashboard:
+
+This dashboard analyses Adtimeline data in order to create some panels giving you information on the Windows domain infrastructure.
+
+The different panels are:
+
+- General information: Information about the Schema version and functional levels. Depending on the result some AD security features may or may not be available. The Domain Controllers are also listed in this panel
+- Microsoft infrastructure products: Tells you if some important Microsoft Infrastructure components such as Exchange on premises, Active Directory Federation Services or Active Directory Certificate Services are installed. Please consider monitoring events related to those services (MSExchange CmdletLogs, ADFS auditing...)
+- Domain Trusts: List domain trusts by type and direction. Run ADTimeline on all your trusted domains, but most importantly make sure they are audited, monitored and secured as rigorously as the domain you are analyzing.
+- ADDS security features: Tells you if some security features are enabled or not. First feature is the AD Recycle bin which gives the administrator the ability to easily recover deleted objects, it will also change the time after an object is removed from the AD database after deletion. Second feature tells you if the schema extension for the Local Admin Password Solution was performed, if yes sysadmins can enable password randomization for local administrators accounts in order to mitigate lateral movement. Another feature is authentication silos which can help to restrict privileged user account logons in order to mitigate privilege escalation by implementing a tiered administrative model. The last feature is the Protected Users group, with a DFL 2012R2 or more the members of this group receive some additional hardening
+- Active Directory infrastructure timeline: Displays a timeline of the infrastructure changes listed above. This timeline tells you the story of the evolution of your infrastructure.
+
+### The sensitive accounts dashboard:
+
+This dashboard provides an inventory of the privileged accounts in the domain and accounts prone to common attack scenarios due to their configuration.
+
+ The different panels are:
+
+- Admin Accounts: This panel lists the accounts where the Admincount attribute value equals 1. Those accounts have their ACL protected by the SDProp process and it means the account has or had at some point high privileges in Active Directory. The first table lists them and provides some information about the accounts, the second table displays a timeline of modifications for some attributes of these accounts.
+- Accounts sensitive to Kerberoast attacks: Kerberoasting is an attack method that allows an attacker to crack the passwords of service accounts in Active Directory offline. The chart is a ratio of accounts prone to this attack and whether or not they are privileged accounts. The table lists them and provides some information about the accounts. Use least privilege principle for those accounts and consider using Group Managed Service Accounts.
+- Accounts sensitive to AS-REP Roast attacks: AS-REP Roast is an attack method that allows an attacker to crack the passwords of accounts in Active Directory offline. The chart is a ratio of accounts prone to this attack and whether or not they are privileged accounts. The table lists them and provides some information about the accounts. Use least privilege principle for those accounts.
+- Sensitive default accounts: Some general information about the default administrator, guest and krbtgt accounts. Administrator can be disabled or renamed as a measure against account lockout. Guest account must be disabled and krbtgt password should be changed on a regular schedule.
+- Accounts trusted for delegation: Kerberos Delegation is a feature that allows an application to reuse the end-user credentials to access resources hosted on a different server. An account trusted for unconstrained delegation is allowed to impersonate almost any user to any service within the network, whereas an account trusted for constrained delegation is allowed to impersonate almost any user for a given service within the network. The chart is a ratio of accounts trusted for constrained/unconstrained delegation. The tables list those accounts, the service name is given for accounts trusted for constrained delegation. A table listing objects with resource based constrained delegation configured is also displayed
+
+## AD threat hunting dashboards: <a name="threathuntdashboards"></a>
+
+### The investigate timeframe dashboard:
+
+Use this dashboard to investigate a particular timeframe.
+
+ The different panels are:
+
+- AD Timeline: A table displaying the timeline for the given timeframe.
+- Global stats: Global statistics on modifications occurring during the given timeframe, including modifications by ObjectClass, by pszAttributeName, by Originating DC, by time (i.e. day of the week or hour of the day) and finally stats on deletions by ObjectClass.
+- Items created and deleted within timeframe: A table displaying the creations and deletions of the same object within the given timeframe. A first chart gives you stats about object lifetimes in hours and a second one figures by ObjectClass.
+- Objects added or removed from groups or ACL modifications within timeframe: This table focuses on the Member and nTSecurityDescriptor attributes, which can help detect an elevation of privilege for a specific account or a backdoor setup by the attacker, the DistinguishedName value of the member and the time the member was added or removed from the group is given in that table. Which makes it more detailed than the above AD Timeline panel. A chart displaying nTSecurityDescriptor modifications by ObjectClass and another displaying the number of times an object was added or removed from a group are given
+- GPOs modifications within timeframe: A GPO can used by an attacker in various ways, for example to inject malicious code in logon/startup scripts, deploy malware at scale with an immediate scheduled task, setup a backdoor by modifying the nTSecurityDescriptor... For each attribute modification this table gives you the current client side extensions of the GPO and where the object is linked (OU, site or domain root).
+
+### The track suspicious activity dashboard
+
+This dashboard analyses the Active Directory timeline and highlights some modifications which can be a sign of a suspicious activity, the modifications spoted can also be legitimate and need a triage analysis.
+
+ The different panels are:
+
+- ACL modifications: This panel does not replace a thorough analysis of the Active Directory permissions with tools such as AD Control Paths. The panel contains a graph displaying a weekly timeline of ACL modifications per ObjectClass which occured one year back, some tables are focusing on the domain root and AdminSDHolder objects where permissions can be used as backdoor by an attacker. Finally, some statistics by ObjectClass and by least frequent owners are displayed.
+- Accounts: This panel show account modifications which can a be sign of suspicious activity such as users added and removed from groups, some charts provide stats by number of times the account was added or removed, membership time in days, Organizational unit where accounts are located (an account from the "non_privileged_users" OU added and removed from a privileged group can be a sign of suspicious activity). There are some graphs, the first graph shows a timeline of accounts lockouts in order to highlight brute force attacks, the second graph shows SID history editions which can be suspicious outside a domain migration period, the next graph analyses all the different attributes modified on an account during a password change (supplementalCredentials, lmPwdHistory, unicodePwd...) and checks they are modified at the same time. A table displays resource based constrained delegation setup on privileged account or domain controller computer objects, which can be a backdoor setup by an attacker. Finally a chart displays domain controller computer objects password change frequency, an attacker could modify the DC registry to disable computer password change and use this password as a backdoor.
+- GPOs: A table of GPOs modifications having an audit client side extension is displayed, an attacker could change the audit settings on the domain to perform malicious actions with stealth. Finally modifications which could result in a GPO processing malfunctioning are displayed, this includes gPCFunctionalityVersion, gPCFileSysPath or versionNumber attribute modification.
+- DCshadow detection: The DCshadow is an attack which allows an attacker to push modifications in Active Directory and bypass traditional alerting by installing a fake DC. It was first presented by Vincent Le Toux and Benjamin Delpy at the BlueHat IL 2018 conference. The first graph will try to detect the installation of the fake DC by analyzing server and nTDSDSA ObjectClass. The two following tables will try to detect replication metadata tampering by analyzing usnOriginatingChange and usnLocalChange values which should increment through the time.
+- Schema and configuration partition suspicious modifications: The first graph displays Active Directory attribute modifications related to the configuration and schema partitions which can lower the security of the domain, used as backdoor by an attacker or hide information to the security team. The second graph is relevant if you have Exchange on premises and track modifications in the configuration partition which can be a sign of mail exfiltration.
