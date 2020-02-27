@@ -131,6 +131,8 @@ The app's "Getting started" page will give you the instructions for the import p
 
 Once indexed the dashboards provided by the app will help the DFIR analyst to spot some Acitve Directory persistence mechanisms, misconfigurations, security audit logging bypass, mail exfiltration, brute force attacks ...
 
+The app is also packaged and available on [Splunkbase](https://splunkbase.splunk.com/app/4897/). It has no prerequisite and will work with a [free Splunk](https://docs.splunk.com/Documentation/Splunk/latest/Admin/MoreaboutSplunkFree) license.
+
 ![Splunkapp](./SA-ADTimeline.png)
 
 ## Sourcetypes: <a name="sourcetype"></a>
