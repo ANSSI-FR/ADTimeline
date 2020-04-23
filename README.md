@@ -59,6 +59,7 @@ Objects considered of interest retrieved by the script include:
 - The directory service and RID manager objects.
 - The Pre Windows 2000 compatible access, Cert publishers, GPO creator owners and DNS Admins groups.
 - ADFS DKM containers.
+- Service connection point objects considered of interest.
 - Custom groups which have to be manually defined.
 
 ## Prerequisites: <a name="prerequisites"></a>
@@ -219,6 +220,7 @@ The different panels are:
 - Microsoft infrastructure products: Tells you if some important Microsoft Infrastructure components such as Exchange on premises, Active Directory Federation Services or Active Directory Certificate Services are installed. Please consider monitoring events related to those services (MSExchange CmdletLogs, ADFS auditing...)
 - Domain Trusts: List domain trusts by type and direction. Run ADTimeline on all your trusted domains, but most importantly make sure they are audited, monitored and secured as rigorously as the domain you are analyzing.
 - ADDS security features: Tells you if some security features are enabled or not. First feature is the AD Recycle bin which gives the administrator the ability to easily recover deleted objects, it will also change the time after an object is removed from the AD database after deletion. Second feature tells you if the schema extension for the Local Admin Password Solution was performed, if yes sysadmins can enable password randomization for local administrators accounts in order to mitigate lateral movement. Another feature is authentication silos which can help to restrict privileged user account logons in order to mitigate privilege escalation by implementing a tiered administrative model. The last feature is the Protected Users group, with a DFL 2012R2 or more the members of this group receive some additional hardening
+- Service Connection Points: Inventory of serviceConnectionPoint (SCP) object class. SCP make it easy for a service to publish service-specific data in the directory Clients of the service use the data in an SCP to locate an instance of the service. Infrastructure assets such as RDS Gateway, SCCM, VMWare Vcenter, some Backup solutions publish an SCP in the directory.
 - Active Directory infrastructure timeline: Displays a timeline of the infrastructure changes listed above. This timeline tells you the story of the evolution of your infrastructure.
 
 ### The sensitive accounts dashboard:
