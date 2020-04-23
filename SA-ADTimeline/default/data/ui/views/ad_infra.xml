@@ -418,21 +418,103 @@
   </row>
   <row>
     <panel>
+      <title>Service Connection Points:</title>
+      <table rejects="$show_html_scpconf$">
+        <title>SCPs in the configuration partition:</title>
+        <search>
+          <progress>
+            <condition match="$job.resultCount$ == 0">
+              <set token="show_html_scpconf">toto</set>
+            </condition>
+            <condition>
+              <unset token="show_html_scpconf"></unset>
+            </condition>
+          </progress>
+          <query>index=$ad_index$ host=$domain_host$ (sourcetype="adobjects" OR sourcetype="gcobjects") DN = "*,CN=Services,CN=Configuration,*" ObjectCategory = "CN=Service-Connection-Point,CN=Schema,CN=Configuration,*" 
+|  eval keyword = replace(keywords, "(&lt;(.|)S&gt;|[\\n\\r])" , "") |  eval serviceBindingInformations = replace(serviceBindingInformation, "(&lt;(.|)S&gt;|[\\n\\r])" , "") 
+|  rename keyword as keywords, serviceBindingInformations as serviceBindingInformation |  table DN, keywords, serviceBindingInformation</query>
+          <earliest>$earliest$</earliest>
+          <latest>$latest$</latest>
+        </search>
+        <option name="count">10</option>
+        <option name="dataOverlayMode">none</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="rowNumbers">false</option>
+        <option name="wrap">true</option>
+        <drilldown>
+          <link target="_blank">search?q=index=$ad_index$%20host=$domain_host$%20(sourcetype=%22adobjects%22%20OR%20sourcetype=%22gcobjects%22)%20DN%20=%20%22*,CN=Services,CN=Configuration,*%22%20ObjectCategory%20=%20%22CN=Service-Connection-Point,CN=Schema,CN=Configuration,*%22&amp;earliest=$earliest$&amp;latest=$latest$</link>
+        </drilldown>
+      </table>
+      <html depends="$show_html_scpconf$">
+         <p style="font-weight: bold !important;font-size:14px">SCPs in the configuration partition: No results</p>
+      </html>
+      <table rejects="$show_html_scpdom$">
+        <title>SCPs in the domain partition:</title>
+        <search>
+          <progress>
+            <condition match="$job.resultCount$ == 0">
+              <set token="show_html_scpdom">toto</set>
+            </condition>
+            <condition>
+              <unset token="show_html_scpdom"></unset>
+            </condition>
+          </progress>
+          <query>index=$ad_index$ host=$domain_host$ sourcetype="adobjects" ObjectClass="serviceConnectionPoint" OR ObjectClass="mSSMSManagementPoint" OR ObjectClass="intellimirrorSCP" OR ObjectClass="serviceAdministrationPoint" NOT DN = "*,CN=Services,CN=Configuration,*" |  eval keyword = replace(keywords, "(&lt;(.|)S&gt;|[\\n\\r])" , "") |  eval serviceBindingInformations = replace(serviceBindingInformation, "(&lt;(.|)S&gt;|[\\n\\r])" , "")  
+|  rename keyword as keywords, serviceBindingInformations as serviceBindingInformation | eval keywords_length = len(keywords) 
+|   fillnull keywords_length value=160 |  sort keywords_length, -serviceClassName 
+|  table DN, serviceClassName, ObjectClass, keywords, serviceBindingInformation</query>
+          <earliest>$earliest$</earliest>
+          <latest>$latest$</latest>
+        </search>
+        <option name="count">5</option>
+        <option name="dataOverlayMode">none</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="rowNumbers">false</option>
+        <option name="wrap">true</option>
+        <format type="color" field="serviceClassName">
+          <colorPalette type="sharedList"></colorPalette>
+          <scale type="sharedCategory"></scale>
+        </format>
+        <format type="color" field="serviceClassName">
+          <colorPalette type="sharedList"></colorPalette>
+          <scale type="sharedCategory"></scale>
+        </format>
+        <format type="color" field="ObjectClass">
+          <colorPalette type="sharedList"></colorPalette>
+          <scale type="sharedCategory"></scale>
+        </format>
+        <format type="color" field="serviceBindingInformation">
+          <colorPalette type="sharedList"></colorPalette>
+          <scale type="sharedCategory"></scale>
+        </format>
+        <drilldown>
+          <link target="_blank">search?q=index=$ad_index$%20host=$domain_host$%20sourcetype=%22adobjects%22%20ObjectClass=%22serviceConnectionPoint%22%20OR%20ObjectClass=%22mSSMSManagementPoint%22%20OR%20ObjectClass=%22intellimirrorSCP%22%20OR%20ObjectClass=%22serviceAdministrationPoint%22%20NOT%20DN%20=%20%22*,CN=Services,CN=Configuration,*%22%20%7C%20%20eval%20keyword%20=%20replace(keywords,%20%22(%3C(.%7C)S%3E%7C%5B%5C%5Cn%5C%5Cr%5D)%22%20,%20%22%22)%20%7C%20%20eval%20serviceBindingInformations%20=%20replace(serviceBindingInformation,%20%22(%3C(.%7C)S%3E%7C%5B%5C%5Cn%5C%5Cr%5D)%22%20,%20%22%22)%20%20%7C%20rename%20keyword%20as%20keywords,%20serviceBindingInformations%20as%20serviceBindingInformation%20%0A%20%20%20%20%7C%20search%20$click.name2$%20=%20%22$click.value2$%22&amp;earliest=$earliest$&amp;latest=$latest$</link>
+        </drilldown>
+      </table>
+      <html depends="$show_html_scpdom$">
+         <p style="font-weight: bold !important;font-size:14px">SCPs in the domain partition: No results</p>
+      </html>
+    </panel>
+  </row>
+  <row>
+    <panel>
       <title>Active Directory infrastructure timeline:</title>
       <table>
         <search>
-          <query>index=$ad_index$ host=$domain_host$ sourcetype=adtimeline ((ObjectClass=DomainDNS OR (ObjectClass=container AND Name="AdminSDHolder")) AND (pszAttributeName = "whencreated" OR pszAttributeName = "ntsecuritydescriptor" OR pszAttributeName = "fsmoRoleOwner")) OR (ObjectClass=crossref AND pszAttributeName="msDS-Behavior-Version") OR (Name = "Exchange Trusted Subsystem" AND ObjectCategory="CN=Group,CN=Schema,CN=Configuration*" AND (pszAttributeName = "whencreated" OR pszAttributeName = "msExchGroupMemberCount")) OR (ObjectClass= "dMD" AND (pszAttributeName= "objectVersion" OR pszAttributeName= "fsmoRoleOwner")) OR (((ObjectClass= "infrastructureUpdate" AND Name= "infrastructure") OR ObjectClass= "rIDManager" OR (ObjectClass= "crossRefContainer" AND Name= "Partitions")) AND (pszAttributeName = "fsmoRoleOwner" OR pszAttributeName = "optionalfeature")) OR (ObjectClass= "trustedDomain" AND pszAttributeName = "whencreated") OR (ObjectClass = "container" AND DN = "CN=ADFS,CN=Microsoft,CN=Program Data*" AND pszAttributeName = "whencreated") OR ( ObjectClass = "msExchSystemObjectsContainer" AND Name = "Microsoft Exchange System Objects" AND  pszAttributeName = "ObjectVersion") OR (ObjectClass = "attributeSchema" AND  Name=ms-Mcs-AdmPwd AND pszAttributeName = "whencreated") OR ((ObjectClass = "msDS-AuthNPolicySilo" OR  ObjectClass = "msDS-AuthNPolicy") AND pszAttributeName = "whencreated") OR (ObjectClass = "certificationAuthority" AND ((DN ="*,CN=Certification Authorities,CN=Public Key Services,CN=Services,*"  AND pszAttributeName = "whencreated") OR (DN ="*CN=NTAuthCertificates,CN=Public Key Services,CN=Services,CN=Configuration,*" AND pszAttributeName = "cACertificate"))) OR (ObjectClass = "attributeSchema" AND Name = "ms-Exch-Schema-Version-Pt" AND pszAttributeName = "rangeUpper") |  makemv pszLastOriginatingDsaDN delim=",CN=" | eval OriginatingDC = mvindex(pszLastOriginatingDsaDN, 1, 1) | table _time, DN, ObjectClass, pszAttributeName, dwVersion, OriginatingDC  | sort -_time</query>
+          <query>index=$ad_index$ host=$domain_host$ sourcetype=adtimeline ((ObjectClass=DomainDNS OR (ObjectClass=container AND Name="AdminSDHolder")) AND (pszAttributeName = "whencreated" OR pszAttributeName = "ntsecuritydescriptor" OR pszAttributeName = "fsmoRoleOwner")) OR (ObjectClass=crossref AND pszAttributeName="msDS-Behavior-Version") OR (Name = "Exchange Trusted Subsystem" AND ObjectCategory="CN=Group,CN=Schema,CN=Configuration*" AND (pszAttributeName = "whencreated" OR pszAttributeName = "msExchGroupMemberCount")) OR (ObjectClass= "dMD" AND (pszAttributeName= "objectVersion" OR pszAttributeName= "fsmoRoleOwner")) OR (((ObjectClass= "infrastructureUpdate" AND Name= "infrastructure") OR ObjectClass= "rIDManager" OR (ObjectClass= "crossRefContainer" AND Name= "Partitions")) AND (pszAttributeName = "fsmoRoleOwner" OR pszAttributeName = "optionalfeature")) OR (ObjectClass= "trustedDomain" AND pszAttributeName = "whencreated") OR (ObjectClass = "container" AND DN = "CN=ADFS,CN=Microsoft,CN=Program Data*" AND pszAttributeName = "whencreated") OR ( ObjectClass = "msExchSystemObjectsContainer" AND Name = "Microsoft Exchange System Objects" AND  pszAttributeName = "ObjectVersion") OR (ObjectClass = "attributeSchema" AND  Name=ms-Mcs-AdmPwd AND pszAttributeName = "whencreated") OR ((ObjectClass = "msDS-AuthNPolicySilo" OR  ObjectClass = "msDS-AuthNPolicy") AND pszAttributeName = "whencreated") OR (ObjectClass = "certificationAuthority" AND ((DN ="*,CN=Certification Authorities,CN=Public Key Services,CN=Services,*"  AND pszAttributeName = "whencreated") OR (DN ="*CN=NTAuthCertificates,CN=Public Key Services,CN=Services,CN=Configuration,*" AND pszAttributeName = "cACertificate"))) OR (ObjectClass = "attributeSchema" AND Name = "ms-Exch-Schema-Version-Pt" AND pszAttributeName = "rangeUpper") OR ((ObjectCategory = "CN=Service-Connection-Point,CN=Schema,CN=Configuration,*"  OR ObjectClass="mSSMSManagementPoint" OR ObjectClass="intellimirrorSCP" OR ObjectClass="serviceAdministrationPoint") AND pszAttributeName = "WhenCreated") |  makemv pszLastOriginatingDsaDN delim=",CN=" | eval OriginatingDC = mvindex(pszLastOriginatingDsaDN, 1, 1) | table _time, DN, ObjectClass, pszAttributeName, dwVersion, OriginatingDC  | sort -_time</query>
           <earliest>0</earliest>
           <latest></latest>
         </search>
-        <option name="count">10</option>
+        <option name="count">40</option>
         <option name="drilldown">cell</option>
+        <option name="refresh.display">progressbar</option>
         <format type="color" field="dwVersion">
           <colorPalette type="minMidMax" maxColor="#006D9C" minColor="#FFFFFF"></colorPalette>
           <scale type="minMidMax"></scale>
         </format>
         <format type="color" field="pszAttributeName">
-          <colorPalette type="map">{"whenCreated":#B6C75A}</colorPalette>
+          <colorPalette type="sharedList"></colorPalette>
+          <scale type="sharedCategory"></scale>
         </format>
         <format type="color" field="OriginatingDC">
           <colorPalette type="sharedList"></colorPalette>
@@ -443,7 +525,7 @@
           <scale type="sharedCategory"></scale>
         </format>
         <drilldown>
-          <link target="_blank">search?q=index=$ad_index$%20host=$domain_host$%20sourcetype=adtimeline%20((ObjectClass=DomainDNS%20OR%20(ObjectClass=container%20AND%20Name=%22AdminSDHolder%22)%20OR%20ObjectClass=%22crossref%22%20OR%20(Name%20=%20%22Exchange%20Trusted%20Subsystem%22%20AND%20ObjectCategory=%22CN=Group,CN=Schema,CN=Configuration*%22)%20OR%20ObjectClass=%20%22dMD%22%20OR%20(ObjectClass=%20%22infrastructureUpdate%22%20AND%20Name=%20%22infrastructure%22)%20OR%20ObjectClass=%20%22trustedDomain%22%20OR%20(ObjectClass%20=%20%22container%22%20AND%20DN%20=%20%22CN=ADFS,CN=Microsoft,CN=Program%20Data*%22)%20OR%20(%20ObjectClass%20=%20%22msExchSystemObjectsContainer%22%20AND%20Name%20=%20%22Microsoft%20Exchange%20System%20Objects%22)%20OR%20(ObjectClass%20=%20%22attributeSchema%22%20AND%20%20Name=ms-Mcs-AdmPwd)%20OR%20ObjectClass%20=%20%22msDS-AuthNPolicySilo%22%20OR%20%20ObjectClass%20=%20%22msDS-AuthNPolicy%22%20OR%20ObjectClass%20=%20%22certificationAuthority%22%20%20OR%20(ObjectClass%20=%20%22attributeSchema%22%20AND%20Name%20=%20%22ms-Exch-Schema-Version-Pt%22%20)))%20%7C%20%20%20%20%20makemv%20pszLastOriginatingDsaDN%20delim=%22,CN=%22%20%7C%20eval%20OriginatingDC%20=%20mvindex(pszLastOriginatingDsaDN,%201,%201)%20%20%0A%7C%20%20search%20$click.name2$%20=%20%22$click.value2$%22&amp;earliest=0&amp;latest=</link>
+          <link target="_blank">search?q=index=$ad_index$%20host=$domain_host$%20sourcetype=adtimeline%20((ObjectClass=DomainDNS%20OR%20(ObjectClass=container%20AND%20Name=%22AdminSDHolder%22)%20OR%20ObjectClass=%22crossref%22%20OR%20(Name%20=%20%22Exchange%20Trusted%20Subsystem%22%20AND%20ObjectCategory=%22CN=Group,CN=Schema,CN=Configuration*%22)%20OR%20ObjectClass=%20%22dMD%22%20OR%20(ObjectClass=%20%22infrastructureUpdate%22%20AND%20Name=%20%22infrastructure%22)%20OR%20ObjectClass=%20%22trustedDomain%22%20OR%20(ObjectClass%20=%20%22container%22%20AND%20DN%20=%20%22CN=ADFS,CN=Microsoft,CN=Program%20Data*%22)%20OR%20(%20ObjectClass%20=%20%22msExchSystemObjectsContainer%22%20AND%20Name%20=%20%22Microsoft%20Exchange%20System%20Objects%22)%20OR%20(ObjectClass%20=%20%22attributeSchema%22%20AND%20%20Name=ms-Mcs-AdmPwd)%20OR%20ObjectClass%20=%20%22msDS-AuthNPolicySilo%22%20OR%20%20ObjectClass%20=%20%22msDS-AuthNPolicy%22%20OR%20ObjectClass%20=%20%22certificationAuthority%22%20%20OR%20(ObjectClass%20=%20%22attributeSchema%22%20AND%20Name%20=%20%22ms-Exch-Schema-Version-Pt%22%20)))%20OR%20((ObjectCategory%20=%20%22CN=Service-Connection-Point,CN=Schema,CN=Configuration,*%22%20%20OR%20ObjectClass=%22mSSMSManagementPoint%22%20OR%20ObjectClass=%22intellimirrorSCP%22%20OR%20ObjectClass=%22serviceAdministrationPoint%22)%20AND%20pszAttributeName%20=%20%22WhenCreated%22)%20%7C%20%20%20%20%20makemv%20pszLastOriginatingDsaDN%20delim=%22,CN=%22%20%7C%20eval%20OriginatingDC%20=%20mvindex(pszLastOriginatingDsaDN,%201,%201)%20%20%0A%7C%20%20search%20$click.name2$%20=%20%22$click.value2$%22&amp;earliest=0&amp;latest=</link>
         </drilldown>
       </table>
     </panel>

@@ -62,12 +62,13 @@
       <table>
         <title>Timeline, adminCount attribute:</title>
         <search>
-          <query>index=$ad_index$ host=$domain_host$ sourcetype=adtimeline  (pszAttributeName = adminCount OR pszAttributeName = isDeleted OR pszAttributeName = member OR pszAttributeName = userAccountControl OR pszAttributeName = whenCreated) [search index=$ad_index$ host=$domain_host$ sourcetype=adobjects  (ObjectClass = "user" OR ObjectClass = "inetOrgPerson" OR ObjectClass = "group") AND adminCount=1 | table DN] | table _time, DN, pszAttributeName, Member, dwVersion, ftimeCreated, ftimeDeleted | sort -_time</query>
+          <query>index=$ad_index$ host=$domain_host$ sourcetype=adtimeline  (pszAttributeName = adminCount OR pszAttributeName = isDeleted OR (pszAttributeName = member AND dwVersion != 0) OR pszAttributeName = userAccountControl OR pszAttributeName = whenCreated) [search index=$ad_index$ host=$domain_host$ sourcetype=adobjects  (ObjectClass = "user" OR ObjectClass = "inetOrgPerson" OR ObjectClass = "group") AND adminCount=1 | table DN] | table _time, DN, pszAttributeName, Member, dwVersion, ftimeCreated, ftimeDeleted | sort -_time</query>
           <earliest>0</earliest>
           <latest></latest>
         </search>
         <option name="count">10</option>
         <option name="drilldown">cell</option>
+        <option name="refresh.display">progressbar</option>
         <format type="color" field="dwVersion">
           <colorPalette type="minMidMax" maxColor="#006D9C" minColor="#FFFFFF"></colorPalette>
           <scale type="minMidMax"></scale>

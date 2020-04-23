@@ -41,6 +41,11 @@
   <row>
     <panel>
       <title>ACL modifications</title>
+                  <html>
+      <p style="text-align:right;">
+          MITRE | ATT&amp;CK <a href="https://attack.mitre.org/techniques/T1098/" target="_blank">T1098</a>
+        </p>
+      </html> 
       <chart>
         <title>ACL modifications performed one year back, stats by ObjectClass per week:</title>
         <search>
@@ -166,6 +171,71 @@
     </panel>
     <panel>
       <title>User and computer accounts</title>
+                  <html>
+      <p style="text-align:right;">
+          MITRE | ATT&amp;CK <a href="https://attack.mitre.org/techniques/T1110/" target="_blank">T1110</a>, <a href="https://attack.mitre.org/techniques/T1531/" target="_blank">T1531</a>
+        </p>
+      </html> 
+      <chart rejects="$show_html_lockout$">
+        <title>Account lockouts</title>
+        <search>
+          <query>index=$ad_index$ host=$domain_host$ sourcetype=adtimeline pszAttributeName="lockoutTime" | timechart  span=1week count by pszAttributeName limit=0</query>
+          <earliest>0</earliest>
+          <latest></latest>
+          <progress>
+            <condition match="$job.resultCount$ == 0">
+              <set token="show_html_lockout">toto</set>
+            </condition>
+            <condition>
+              <unset token="show_html_lockout"></unset>
+            </condition>
+          </progress>
+        </search>
+        <option name="charting.chart">column</option>
+        <option name="charting.drilldown">all</option>
+        <option name="refresh.display">progressbar</option>
+        <drilldown>
+          <eval token="drilldown.earliest">if(isnull($row._time$),1,$row._time$)</eval>
+          <eval token="drilldown.latest">if(isnull($row._time$),now(),$row._time$ + $row._span$)</eval>
+          <link target="_blank">search?q=index=$ad_index$%20host=$domain_host$%20sourcetype=adtimeline%20pszAttributeName=%22lockoutTime%22&amp;earliest=$drilldown.earliest$&amp;latest=$drilldown.latest$</link>
+        </drilldown>
+      </chart>
+      <table rejects="$show_html_lockout2$">
+        <title>Top 5 account lockouts</title>
+        <search>
+          <progress>
+            <condition match="$show_html_lockout2$ == 0">
+              <set token="show_html_lockout2">toto</set>
+            </condition>
+            <condition>
+              <unset token="show_html_lockout2"></unset>
+            </condition>
+          </progress>
+          <query>index=$ad_index$  host=$domain_host$  sourcetype=adtimeline pszAttributeName="lockoutTime" | sort -dwVersion | head 5 | table _time, DN, dwVersion</query>
+          <earliest>0</earliest>
+          <latest></latest>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">cell</option>
+        <format type="color" field="dwVersion">
+          <colorPalette type="minMidMax" maxColor="#DC4E41" minColor="#FFFFFF"></colorPalette>
+          <scale type="minMidMax"></scale>
+        </format>
+        <drilldown>
+          <link target="_blank">search?q=index=$ad_index$%20%20host=$domain_host$%20%20sourcetype=adtimeline%20pszAttributeName=%22lockoutTime%22%20%7C%20sort%20-dwVersion%20%7C%20head%205%20%7C%20search%20$click.name2$%20=%20%22$click.value2$%22&amp;earliest=0&amp;latest=</link>
+        </drilldown>
+      </table>
+      <html depends="$show_html_lockout2$">
+         <p style="font-weight: bold !important;font-size:14px">Top 5 account lockouts: No results</p>
+      </html>
+      <html depends="$show_html_lockout$">
+         <p style="font-weight: bold !important;font-size:14px">Account lockouts: No results</p>
+      </html>
+                  <html>
+      <p style="text-align:right;">
+          MITRE | ATT&amp;CK <a href="https://attack.mitre.org/techniques/T1098/" target="_blank">T1098</a>, <a href="https://attack.mitre.org/techniques/T1531/" target="_blank">T1531</a>
+        </p>
+      </html> 
       <chart rejects="$show_html_addedremoveddgrp$">
         <title>Accounts added and removed from groups, frequency:</title>
         <search>
@@ -241,61 +311,11 @@
       <html depends="$show_html_addedremoveddgrpou$">
          <p style="font-weight: bold !important;font-size:14px">Accounts added and removed from groups, member account OU: No results</p>
       </html>
-      <chart rejects="$show_html_lockout$">
-        <title>Account lockouts</title>
-        <search>
-          <query>index=$ad_index$ host=$domain_host$ sourcetype=adtimeline pszAttributeName="lockoutTime" | timechart  span=1week count by pszAttributeName limit=0</query>
-          <earliest>0</earliest>
-          <latest></latest>
-          <progress>
-            <condition match="$job.resultCount$ == 0">
-              <set token="show_html_lockout">toto</set>
-            </condition>
-            <condition>
-              <unset token="show_html_lockout"></unset>
-            </condition>
-          </progress>
-        </search>
-        <option name="charting.chart">column</option>
-        <option name="charting.drilldown">all</option>
-        <option name="refresh.display">progressbar</option>
-        <drilldown>
-          <eval token="drilldown.earliest">if(isnull($row._time$),1,$row._time$)</eval>
-          <eval token="drilldown.latest">if(isnull($row._time$),now(),$row._time$ + $row._span$)</eval>
-          <link target="_blank">search?q=index=$ad_index$%20host=$domain_host$%20sourcetype=adtimeline%20pszAttributeName=%22lockoutTime%22&amp;earliest=$drilldown.earliest$&amp;latest=$drilldown.latest$</link>
-        </drilldown>
-      </chart>
-      <table rejects="$show_html_lockout2$">
-        <title>Top 5 account lockouts</title>
-        <search>
-          <progress>
-            <condition match="$show_html_lockout2$ == 0">
-              <set token="show_html_lockout2">toto</set>
-            </condition>
-            <condition>
-              <unset token="show_html_lockout2"></unset>
-            </condition>
-          </progress>
-          <query>index=$ad_index$  host=$domain_host$  sourcetype=adtimeline pszAttributeName="lockoutTime" | sort -dwVersion | head 5 | table _time, DN, dwVersion</query>
-          <earliest>0</earliest>
-          <latest></latest>
-        </search>
-        <option name="count">10</option>
-        <option name="drilldown">cell</option>
-        <format type="color" field="dwVersion">
-          <colorPalette type="minMidMax" maxColor="#DC4E41" minColor="#FFFFFF"></colorPalette>
-          <scale type="minMidMax"></scale>
-        </format>
-        <drilldown>
-          <link target="_blank">search?q=index=$ad_index$%20%20host=$domain_host$%20%20sourcetype=adtimeline%20pszAttributeName=%22lockoutTime%22%20%7C%20sort%20-dwVersion%20%7C%20head%205%20%7C%20search%20$click.name2$%20=%20%22$click.value2$%22&amp;earliest=0&amp;latest=</link>
-        </drilldown>
-      </table>
-      <html depends="$show_html_lockout2$">
-         <p style="font-weight: bold !important;font-size:14px">Top 5 account lockouts: No results</p>
-      </html>
-      <html depends="$show_html_lockout$">
-         <p style="font-weight: bold !important;font-size:14px">Account lockouts: No results</p>
-      </html>
+                  <html>
+      <p style="text-align:right;">
+          MITRE | ATT&amp;CK <a href="https://attack.mitre.org/techniques/T1178/" target="_blank">T1178</a>
+        </p>
+      </html> 
       <chart rejects="$show_html_sid1$">
         <title>SIDHistory and primaryGroupID editions</title>
         <search>
@@ -374,6 +394,11 @@
       <html depends="$show_html_sid2$">
          <p style="font-weight: bold !important;font-size:14px">Suspicious SIDHistory values: No results</p>
       </html>
+                  <html>
+      <p style="text-align:right;">
+          MITRE | ATT&amp;CK <a href="https://attack.mitre.org/techniques/T1098/" target="_blank">T1098</a>
+        </p>
+      </html>
       <table rejects="$show_html_pwdbd$">
         <title>Possible password backdoor: Compare dBCSPwd LmPwdHistory ntPwdHistory unicodePwd and supplementalCredentials attributes modification date</title>
         <search>
@@ -428,6 +453,11 @@
       <html depends="$show_html_rbcd$">
          <p style="font-weight: bold !important;font-size:14px">Resource based constrained delegation on privileged account or Domain Controller: No results</p>
       </html>
+                  <html>
+      <p style="text-align:right;">
+          MITRE | ATT&amp;CK <a href="https://attack.mitre.org/techniques/T1112/" target="_blank">T1112</a>
+        </p>
+      </html> 
       <chart rejects="$show_html_pwddcc$">
         <title>Domain Controller password change frequency:</title>
         <search>
@@ -462,6 +492,11 @@
   <row>
     <panel>
       <title>GPOs</title>
+                  <html>
+      <p style="text-align:right;">
+          MITRE | ATT&amp;CK <a href="https://attack.mitre.org/techniques/T1484/" target="_blank">T1484</a>
+        </p>
+      </html>
       <table rejects="$show_html_gpoaudit$">
         <title>Modifications on GPOs configuring audit settings:</title>
         <search>
@@ -541,6 +576,11 @@
   <row>
     <panel>
       <title>DCShadow detection</title>
+            <html>
+      <p style="text-align:right;">
+          MITRE | ATT&amp;CK <a href="https://attack.mitre.org/techniques/T1207/" target="_blank">T1207</a>
+        </p>
+      </html>
       <chart rejects="$show_html_dcshadow$">
         <title>Possible DCShadow operations:</title>
         <search>
@@ -627,6 +667,11 @@
     </panel>
     <panel>
       <title>Schema and configuration partition suspicious modifications:</title>
+                  <html>
+      <p style="text-align:right;">
+          MITRE | ATT&amp;CK <a href="https://attack.mitre.org/techniques/T1098/" target="_blank">T1098</a>
+        </p>
+      </html> 
       <chart rejects="$show_html_schemconf$">
         <title>Schema: SearchFlags or defaultSecurityDescriptor attributes | Configuration: RightsGuid, LocalizationDisplayId, DsHeuristics or tombstoneLifetime attributes</title>
         <search>
@@ -655,6 +700,11 @@
       <html depends="$show_html_schemconf$">
          <p style="font-weight: bold !important;font-size:14px">Schema and configuration partition suspicious modifications: No results</p>
       </html>
+                                <html>
+      <p style="text-align:right;">
+          MITRE | ATT&amp;CK <a href="https://attack.mitre.org/techniques/T1114/" target="_blank">T1114</a>
+        </p>
+      </html> 
       <chart rejects="$show_html_mailexfil$">
         <title>Possible mail exfiltration on Exchange on prem msExchMRSRequest, msExchTransportRule and msExchPrivateMDB ObjectClass:</title>
         <search>
@@ -683,6 +733,11 @@
       <html depends="$show_html_mailexfil$">
          <p style="font-weight: bold !important;font-size:14px">Possible mail exfiltration on Exchange on prem msExchMRSRequest, msExchTransportRule and msExchPrivateMDB ObjectClass: No results</p>
       </html>
+      <html>
+            <p style="vertical-align:bottom;text-align:right;font-style:italic;font-size:x-small">
+          © 2020 The MITRE Corporation. This work is reproduced and distributed with the permission of The MITRE Corporation.
+        </p>
+        </html>
     </panel>
   </row>
 </form>

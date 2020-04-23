@@ -195,6 +195,11 @@
   <row>
     <panel>
       <title>Items created and deleted within timeframe:</title>
+	                          <html>
+      <p style="text-align:right;">
+          MITRE | ATT&amp;CK <a href="https://attack.mitre.org/techniques/T1136/" target="_blank">T1136</a>, <a href="https://attack.mitre.org/techniques/T1531/" target="_blank">T1531</a>
+        </p>
+      </html>
       <table rejects="$show_html_createanddel$">
         <title>Timeline:</title>
         <search>
@@ -291,6 +296,11 @@
   <row>
     <panel>
       <title>Objects added or removed from groups or ACL modifications within timeframe:</title>
+	                    <html>
+      <p style="text-align:right;">
+          MITRE | ATT&amp;CK <a href="https://attack.mitre.org/techniques/T1098/" target="_blank">T1098</a>, <a href="https://attack.mitre.org/techniques/T1531/" target="_blank">T1531</a>
+        </p>
+      </html> 
       <table rejects="$show_html_memberoracl$">
         <title>Timeline:</title>
         <search>
@@ -399,6 +409,11 @@
   <row>
     <panel>
       <title>GPOs modifications within timeframe:</title>
+	                    <html>
+      <p style="text-align:right;">
+          MITRE | ATT&amp;CK <a href="https://attack.mitre.org/techniques/T1484/" target="_blank">T1484</a>
+        </p>
+      </html> 
       <table rejects="$show_html_gpomod$">
         <title>Timeline:</title>
         <search>
@@ -445,12 +460,17 @@
           <scale type="sharedCategory"></scale>
         </format>
         <drilldown>
-          <link target="_blank">search?q=index=$ad_index$%20host=$domain_host$%20sourcetype=adtimeline%20ObjectClass=groupPolicyContainer%20%7C%20join%20DN%20%5Bsearch%20index=$ad_index$%20host=$domain_host$%20sourcetype=%22adobjects%22%20ObjectClass=groupPolicyContainer%20earliest%20=%201%20latest%20=%20now()%20%20%7C%20rex%20field=_raw%20%22gPCMachineExtensionNames%5C%22%3E(%253F%3CgPCMachineExtensionNames%3E.%252B%253F)%3C/S%3E%22%20%0A%7C%20rex%20field=_raw%20%22gPCUserExtensionNames%5C%22%3E(%253F%3CgPCUserExtensionNames%3E.%252B%253F)%3C/S%3E%22%20%0A%7C%20rex%20field=gPCMachineExtensionNames%20%22%5C%5B(%253F%3CMachineCSEs%3E%5C%7B.%252B%253F%5C%7D)%5C%5D%253F%22%20max_match=0%20%7C%20rex%20field=gPCUserExtensionNames%20%22%5C%5B(%253F%3CUserCSEs%3E%5C%7B.%252B%253F%5C%7D)%5C%5D%253F%22%20max_match=0%20%0A%7C%20eval%20AllCSEs=coalesce(MachineCSEs,UserCSEs)%20%0A%7C%20%20dedup%20AllCSEs%20%0A%7C%20%20lookup%20CSE_lookup%20GUID%20AS%20AllCSEs%20OUTPUTNEW%20CSE%20as%20ClientSideExtensions%20%7C%20fields%20DN,%20DisplayName,%20ClientSideExtensions%5D%20%0A%7C%20%20join%20Name%20%0A%20%20%20%20%5Bsearch%20index=$ad_index$%20host=$domain_host$%20sourcetype=%22adobjects%22%20(ObjectClass%20=%20%22domainDNS%22%20OR%20ObjectClass%20=%20%22site%22%20OR%20ObjectClass%20=%20%22organizationalUnit%22)%20earliest%20=%201%20latest%20=%20now()%20%7C%20rex%20field=_raw%20%22gPLink%5C%22%3E(%253F%3CgPLink%3E.%252B%253F)%3C/S%3E%22%20%0A%20%7C%20%20search%20%20gPLink%20=%20%22*%22%20%0A%7C%20%20rex%20field=gPLink%20%22(CN%7Ccn)%5C=(%253F%3CName%3E%5C%7B.%252B%253F%5C%7D),%22%20max_match=0%20%0A%7C%20mvexpand%20Name%0A%7C%20%20stats%20values(DN)%20as%20gPLinks%20by%20Name%20%0A%7C%20%20fields%20Name,%20gPLinks%20%5D%20%7C%20makemv%20pszLastOriginatingDsaDN%20delim=%22,CN=%22%20%7C%20eval%20OriginatingDC%20=%20mvindex(pszLastOriginatingDsaDN,%201,%201)%20%7C%20search%20$click.name2$%20=%20%22$click.value2$%22&amp;earliest=$time_token.earliest$&amp;latest=$time_token.latest$</link>
+          <link target="_blank">search?q=index=$ad_index$%20host=$domain_host$%20sourcetype=adtimeline%20ObjectClass=groupPolicyContainer%20%7C%20join%20DN%20%5Bsearch%20index=$ad_index$%20host=$domain_host$%20sourcetype=%22adobjects%22%20ObjectClass=groupPolicyContainer%20earliest%20=%201%20latest%20=%20now()%20%20%7C%20rex%20field=_raw%20%22gPCMachineExtensionNames%5C%22%3E(%3F%3CgPCMachineExtensionNames%3E.%2B%3F)%3C/S%3E%22%20%0A%7C%20rex%20field=_raw%20%22gPCUserExtensionNames%5C%22%3E(%3F%3CgPCUserExtensionNames%3E.%2B%3F)%3C/S%3E%22%20%0A%7C%20rex%20field=gPCMachineExtensionNames%20%22%5C%5B(%3F%3CMachineCSEs%3E%5C%7B.%2B%3F%5C%7D)%5C%5D%3F%22%20max_match=0%20%7C%20rex%20field=gPCUserExtensionNames%20%22%5C%5B(%3F%3CUserCSEs%3E%5C%7B.%2B%3F%5C%7D)%5C%5D%3F%22%20max_match=0%20%0A%7C%20eval%20AllCSEs=coalesce(MachineCSEs,UserCSEs)%20%0A%7C%20%20dedup%20AllCSEs%20%0A%7C%20%20lookup%20CSE_lookup%20GUID%20AS%20AllCSEs%20OUTPUTNEW%20CSE%20as%20ClientSideExtensions%20%7C%20fields%20DN,%20DisplayName,%20ClientSideExtensions%5D%20%0A%7C%20%20join%20Name%20%0A%20%20%20%20%5Bsearch%20index=$ad_index$%20host=$domain_host$%20sourcetype=%22adobjects%22%20(ObjectClass%20=%20%22domainDNS%22%20OR%20ObjectClass%20=%20%22site%22%20OR%20ObjectClass%20=%20%22organizationalUnit%22)%20earliest%20=%201%20latest%20=%20now()%20%7C%20rex%20field=_raw%20%22gPLink%5C%22%3E(%3F%3CgPLink%3E.%2B%3F)%3C/S%3E%22%20%0A%20%7C%20%20search%20%20gPLink%20=%20%22*%22%20%0A%7C%20%20rex%20field=gPLink%20%22(CN%7Ccn)%5C=(%3F%3CName%3E%5C%7B.%2B%3F%5C%7D),%22%20max_match=0%20%0A%7C%20mvexpand%20Name%0A%7C%20%20stats%20values(DN)%20as%20gPLinks%20by%20Name%20%0A%7C%20%20fields%20Name,%20gPLinks%20%5D%20%7C%20makemv%20pszLastOriginatingDsaDN%20delim=%22,CN=%22%20%7C%20eval%20OriginatingDC%20=%20mvindex(pszLastOriginatingDsaDN,%201,%201)%20%7C%20search%20$click.name2$%20=%20%22$click.value2$%22&amp;earliest=$time_token.earliest$&amp;latest=$time_token.latest$</link>
         </drilldown>
       </table>
       <html depends="$show_html_gpomod$">
          <p style="font-weight: bold !important;font-size:14px">Timeline: No results</p>
       </html>
+	             <html>
+            <p style="vertical-align:bottom;text-align:right;font-style:italic;font-size:x-small">
+          © 2020 The MITRE Corporation. This work is reproduced and distributed with the permission of The MITRE Corporation.
+        </p>
+        </html> 
     </panel>
   </row>
 </form>

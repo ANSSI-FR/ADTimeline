@@ -701,6 +701,115 @@ if($error)
 else {"$(Get-TimeStamp) Number of classSchema objects:  $($countClassesschema)" | out-file $logfilename -append}
 
 
+#Retrieving Service Connection Point class objects of interest located in the domain partition
+
+#SCP Objectclass/categories of interest mSSMSManagementPoint = SCCM, Service-Administration-Point holds binding information for connecting to a service to administer it, intellimirrorSCP contains configuration information for the service that responds to Remote Boot clients that request attention from a Remote Install Server.
+$SAdminPointCat = "CN=Service-Administration-Point," + $root.SchemaNamingContext
+$scpsdomain1 = Get-ADObject -searchbase $root.defaultNamingContext -Filter {(objectclass -eq "mSSMSManagementPoint") -or (ObjectCategory -eq $SAdminPointCat) -or (objectclass -eq "intellimirrorSCP")} -Server $server -properties *
+if(($error -like '*timeout*') -or ($error -like '*invalid enumeration context*'))
+	{
+	$i = 1
+	while((($error -like '*timeout*') -or ($error -like '*invalid enumeration context*')) -and ($i -le 5))
+		{
+		$resultspagesize = 256 - $i * 40
+		write-output -inputobject "LDAP time out, trying again with ResultPageSize $($resultspagesize)"
+		$error.clear()
+		$scpsdomain1 = Get-ADObject -ResultPageSize $resultspagesize -searchbase $root.defaultNamingContext -Filter {(objectclass -eq "mSSMSManagementPoint") -or (ObjectCategory -eq $SAdminPointCat) -or (objectclass -eq "intellimirrorSCP")} -Server $server -properties *
+		$i++
+		}
+	if($scpsdomain1){write-output -inputobject "LDAP query succeeded with different ResultPageSize"}
+	else{write-output -inputobject "LDAP query failure despite different ResultPageSize, resuming script"}
+	}
+$criticalobjects += $scpsdomain1
+$countscpsdomain1 = ($scpsdomain1 | measure-object).count
+
+#SCP serviceClassName of interest
+$scpsdomain2 = Get-ADObject -searchbase $root.defaultNamingContext -Filter {(objectclass -eq "serviceConnectionPoint") -and (serviceClassName -like "*")} -Server $server -properties *
+if(($error -like '*timeout*') -or ($error -like '*invalid enumeration context*'))
+	{
+	$i = 1
+	while((($error -like '*timeout*') -or ($error -like '*invalid enumeration context*')) -and ($i -le 5))
+		{
+		$resultspagesize = 256 - $i * 40
+		write-output -inputobject "LDAP time out, trying again with ResultPageSize $($resultspagesize)"
+		$error.clear()
+		$scpsdomain2 = Get-ADObject -ResultPageSize $resultspagesize -searchbase $root.defaultNamingContext -Filter {(objectclass -eq "serviceConnectionPoint") -and (serviceClassName -like "*")} -Server $server -properties *
+		$i++
+		}
+	if($scpsdomain2){write-output -inputobject "LDAP query succeeded with different ResultPageSize"}
+	else{write-output -inputobject "LDAP query failure despite different ResultPageSize, resuming script"}
+	}
+#Known list of relevant serviceClassName ldap = ADLDS, Vcenter..., TSGateway = RDS Gateway, BEMainService = BackupExec server, Groupwise = Novell Groupwise
+$knowrelevantscpsdomain2 = $scpsdomain2 | where-object{($_.serviceClassName -eq "ldap") -or ($_.serviceClassName -eq "TSGateway") -or ($_.serviceClassName -eq "BEMainService") -or ($_.serviceClassName -eq "groupwise")}
+$criticalobjects += $knowrelevantscpsdomain2
+$countscpsdomain2 = ($knowrelevantscpsdomain2 | measure-object).count
+#Get serviceClassName with few occurences outisde known list to discover new intersting serviceClassName.
+$remainingscpsdomain2  = $scpsdomain2 | where-object{($_.serviceClassName -ne "ldap") -and ($_.serviceClassName -ne "TSGateway") -and ($_.serviceClassName -ne "BEMainService") -and ($_.serviceClassName -ne "groupwise")}
+if($remainingscpsdomain2)
+	{
+	$rarescp = $remainingscpsdomain2 | Group-Object -Property serviceClassName | where-object{($_.count -le 3)}	
+	if($rarescp)
+		{
+		foreach($rareserviceclassname in $rarescp)
+			{
+			$rarescptoadd = $remainingscpsdomain2 | Where-Object{$_.serviceClassName -eq $rareserviceclassname.Name}
+			$countscpsdomain2 = $countscpsdomain2 + $rareserviceclassname.count
+			$criticalobjects += $rarescptoadd
+			}	
+		}	
+	}
+if($error)
+    { "$(Get-TimeStamp) Error while retrieving Service Connection Point class objects of interest located in the domain partition $($error)" | out-file $logfilename -append ; $error.clear() }
+else {$countscpsdomain = $countscpsdomain1 + $countscpsdomain2; "$(Get-TimeStamp) Number of Service Connection Point class objects of interest located in the domain partition:  $($countscpsdomain)" | out-file $logfilename -append}
+
+
+#Retrieving Service Connection Point class objects located in the configuration partition
+$countallscps = 0
+$scps =  Get-ADObject -searchbase $root.configurationNamingContext -filter {ObjectClass -eq 'ServiceConnectionPoint'} -Server $server -properties *
+if(($error -like '*timeout*') -or ($error -like '*invalid enumeration context*'))
+	{
+	$i = 1
+	while((($error -like '*timeout*') -or ($error -like '*invalid enumeration context*')) -and ($i -le 5))
+		{
+		$resultspagesize = 256 - $i * 40
+		write-output -inputobject "LDAP time out, trying again with ResultPageSize $($resultspagesize)"
+		$error.clear()
+		$scps = Get-ADObject -ResultPageSize $resultspagesize -searchbase $root.configurationNamingContext -filter {ObjectClass -eq 'ServiceConnectionPoint'} -Server $server -properties *
+		$i++
+		}
+	if($scps){write-output -inputobject "LDAP query succeeded with different ResultPageSize"}
+	else{write-output -inputobject "LDAP query failure despite different ResultPageSize, resuming script"}
+	}
+#Might be read rights issues, trying GC
+if($error -like '*Directory object not found*')
+	{
+	$search = new-object System.DirectoryServices.DirectorySearcher
+	$search.pagesize = 256
+	$scpCategory = "CN=Service-Connection-Point," + $root.SchemaNamingContext
+	$search.filter = "((ObjectCategory=$($scpCategory)))"
+	$search.searchroot = [ADSI]"GC://$($gc)"
+	$scpquery =  $search.findall()
+	$scpsgc = $scpquery | where-object{$_.properties.distinguishedname -like "*CN=Services,CN=Configuration*"} | Convert-ADSearchResult
+	if($scpsgc){
+				$error.clear()
+				$countallscps = ($scpsgc | measure-object).count
+				$gcobjects += $scpsgc
+				}
+	}
+
+if($scps){
+		$criticalobjects += $scps
+		$countallscps = ($scps | measure-object).count
+		}
+
+if($error)
+	{ "$(Get-TimeStamp) Error while retrieving Service Connection Point objects located in the configuration partition $($error)" | out-file $logfilename -append ; $error.clear() }
+else
+	{   if($scps){"$(Get-TimeStamp) Number of Service Connection Point objects located in the configuration partition retrieved via LDAP: $($countallscps)" | out-file $logfilename -append}
+		elseif($scpsgc){"$(Get-TimeStamp) Number of Service Connection Point objects located in the configuration partition retrieved via GC: $($countallscps)" | out-file $logfilename -append}
+		else{"$(Get-TimeStamp) Number of Service Connection Point objects located in the configuration partition: $($countallscps)" | out-file $logfilename -append}
+	}
+
 #Retrieving server and ntdsdsa class objects located in the configuration partition (Domain Controllers)
 $dcrepls =  Get-ADObject -searchbase $root.configurationNamingContext -filter {(ObjectClass -eq 'Server') -or (ObjectClass -eq 'nTDSDSA')} -Server $server -properties *
 if(($error -like '*timeout*') -or ($error -like '*invalid enumeration context*'))
@@ -1569,35 +1678,6 @@ else
 		}
 	
 	}
-# If ADFS is installed, check if ADFS device registration is enabled
-if(($IsADFS -eq $true) -or ($IsADFSroot -eq $true) -or ($IsADFScurrent -eq $true))
-	{
-	$ADFSDevicereg = "CN=Device Registration Configuration,CN=Services," + ($root.configurationNamingContext)
-	$isADFSDevicereg = [ADSI]::Exists("LDAP://$($server)/$($ADFSDevicereg)")
-	if($isADFSDevicereg)
-		{
-		$ADFSDeviceregObjects = get-ADObject -searchbase $ADFSDevicereg -filter * -server $server -properties *
-		if(($error -like '*timeout*') -or ($error -like '*invalid enumeration context*'))
-			{
-			$i = 1
-			while((($error -like '*timeout*') -or ($error -like '*invalid enumeration context*')) -and ($i -le 5))
-				{
-				$resultspagesize = 256 - $i * 40
-				write-output -inputobject "LDAP time out, trying again with ResultPageSize $($resultspagesize)"
-				$error.clear()
-				$ADFSDeviceregObjects = Get-ADObject -ResultPageSize $resultspagesize -searchbase $ADFSDevicereg -filter * -server $server -properties *
-				$i++
-				}
-				if($ADFSDeviceregObjects){write-output -inputobject "LDAP query succeeded with different ResultPageSize"}
-				else{write-output -inputobject "LDAP query failure despite different ResultPageSize, resuming script"}
-			}
-			$criticalobjects +=  $ADFSDeviceregObjects
-			$countADFSDeviceregObjects = ( $ADFSDeviceregObjects | measure-object).count
-			if($error)
-				{ "$(Get-TimeStamp) Error while retrieving ADFS device registration objects $($error)" | out-file $logfilename -append ; $error.clear() }
-			else {"$(Get-TimeStamp) Number of ADFS device registration objects: $($countADFSDeviceregObjects)" | out-file $logfilename -append}
-		}
-	}
 
 
 #Check if MS Exchange is installed by testing the Exchange Trusted SubSystem (ETS) existance
@@ -1662,6 +1742,7 @@ if($ISets -eq $true)
 				{"$(Get-TimeStamp) ETS members processed, getting nested groups till level 2 " | out-file $logfilename -append}
 			}
 		# Fetching transport rules, accepted domains, SMTP connectors and Mailbox databases
+		$countSMTP = 0
 		$SMTP = Get-ADObject -searchbase $root.configurationNamingContext -filter {(ObjectClass -eq "msExchTransportRule") -or (ObjectClass -eq "msExchAcceptedDomain")  -or (ObjectClass -eq "msExchRoutingSMTPConnector")  -or (ObjectClass -eq "msExchSmtpReceiveConnector") -or (ObjectClass -eq "msExchMDB")} -server $server -Properties *
 		if(($error -like '*timeout*') -or ($error -like '*invalid enumeration context*'))
 			{
@@ -1677,17 +1758,43 @@ if($ISets -eq $true)
 			if($SMTP){write-output -inputobject "LDAP query succeeded with different ResultPageSize"}
 			else{write-output -inputobject "LDAP query failure despite different ResultPageSize, resuming script"}
 			}
-		$criticalobjects += $SMTP
-		$countSMTP = ($SMTP | measure-object).count
-				if($error)
-				{ "$(Get-TimeStamp) Error while retrieving mail flow and storage related objects $($error)" | out-file $logfilename -append ; $error.clear() }
+		#Might be read rights issues, trying GC
+		if($error -like '*Directory object not found*')
+			{
+			$search = new-object System.DirectoryServices.DirectorySearcher
+			$search.pagesize = 256
+			$TransportCategory = "CN=ms-Exch-Transport-Rule," + $root.SchemaNamingContext
+			$AcceptedCategory = "CN=ms-Exch-Accepted-Domain," + $root.SchemaNamingContext
+			$RouteCategory = "CN=ms-Exch-Routing-SMTP-Connector," + $root.SchemaNamingContext
+			$ReceiveCategory = "CN=ms-Exch-Smtp-Receive-Connector," + $root.SchemaNamingContext
+			$MDBCategory = "CN=ms-Exch-MDB," + $root.SchemaNamingContext
+			$MDBprivCategory = "CN=ms-Exch-Private-MDB," + $root.SchemaNamingContext
+			$search.filter = "(|(ObjectCategory=$($MDBprivCategory))(ObjectCategory=$($RouteCategory))(ObjectCategory=$($AcceptedCategory))(ObjectCategory=$($TransportCategory))(ObjectCategory=$($ReceiveCategory))(ObjectCategory=$($MDBCategory)))"
+			$search.searchroot = [ADSI]"GC://$($gc)"
+			$smtpgc =  $search.findall() | Convert-ADSearchResult
+			if($smtpgc){
+				$error.clear()
+				$countSMTP  = ($smtpgc | measure-object).count
+				$gcobjects += $smtpgc
+				}
+			}	
+
+		if($SMTP){
+			$criticalobjects += $SMTP
+			$countSMTP = ($SMTP | measure-object).count
+			}
+		if($error)
+			{ "$(Get-TimeStamp) Error while retrieving mail flow and storage related objects $($error)" | out-file $logfilename -append ; $error.clear() }
 				else
 				{
 				if($SMTP)
-						{"$(Get-TimeStamp) Number of mail flow and storage related objects: $($countSMTP)" | out-file $logfilename -append}
-					else
+						{"$(Get-TimeStamp) Number of mail flow and storage related objects retrieved via LDAP: $($countSMTP)" | out-file $logfilename -append}
+				elseif($smtpgc)
+						{"$(Get-TimeStamp) Number of mail flow and storage related objects retrieved via GC: $($countSMTP)" | out-file $logfilename -append}
+				else
 						{"$(Get-TimeStamp) Cannot read mail flow and storage related objects with the account running the script" | out-file $logfilename -append}
 				}
+	
 		#Getting RBAC rol assignements
 		"$(Get-TimeStamp) Retrieving RBAC role assignements" | out-file $logfilename -append
 		$RBAC = Get-ADObject -SearchBase $serviceNC -SearchScope SubTree -filter {ObjectClass -eq "msExchRoleAssignment"} -server $server -properties *
@@ -1810,7 +1917,7 @@ if($ISets -eq $true)
 			}
 
 		}
-
+	
 	else
 		{
 		# If current domain is child domain, we need GC to retrieve some Exchange objects information.
@@ -1840,6 +1947,7 @@ if($ISets -eq $true)
 		if($error)
 			{ "$(Get-TimeStamp) Error while retrieving Exchange Windows Permissions or Exchange servers groups $($error)" | out-file $logfilename -append ; $error.clear() }
 		# Fetching transport rules, accepted domains, SMTP connectors and Mailbox databases
+		$countSMTP = 0
 		$SMTP = Get-ADObject -searchbase $root.configurationNamingContext -filter {(ObjectClass -eq "msExchTransportRule") -or (ObjectClass -eq "msExchAcceptedDomain")  -or (ObjectClass -eq "msExchRoutingSMTPConnector")  -or (ObjectClass -eq "msExchSmtpReceiveConnector") -or (ObjectClass -eq "msExchMDB")} -server $server -Properties *
 
 		if(($error -like '*timeout*') -or ($error -like '*invalid enumeration context*'))
@@ -1857,14 +1965,39 @@ if($ISets -eq $true)
 			else{write-output -inputobject "LDAP query failure despite different ResultPageSize, resuming script"}
 			}
 
-		$criticalobjects += $SMTP
-		$countSMTP = ($SMTP | measure-object).count
+		#Might be read rights issues, trying GC
+		if($error -like '*Directory object not found*')
+			{
+			$search = new-object System.DirectoryServices.DirectorySearcher
+			$search.pagesize = 256
+			$TransportCategory = "CN=ms-Exch-Transport-Rule," + $root.SchemaNamingContext
+			$AcceptedCategory = "CN=ms-Exch-Accepted-Domain," + $root.SchemaNamingContext
+			$RouteCategory = "CN=ms-Exch-Routing-SMTP-Connector," + $root.SchemaNamingContext
+			$ReceiveCategory = "CN=ms-Exch-Smtp-Receive-Connector," + $root.SchemaNamingContext
+			$MDBCategory = "CN=ms-Exch-MDB," + $root.SchemaNamingContext
+			$MDBprivCategory = "CN=ms-Exch-Private-MDB," + $root.SchemaNamingContext
+			$search.filter = "(|(ObjectCategory=$($MDBprivCategory))(ObjectCategory=$($RouteCategory))(ObjectCategory=$($AcceptedCategory))(ObjectCategory=$($TransportCategory))(ObjectCategory=$($ReceiveCategory))(ObjectCategory=$($MDBCategory)))"
+			$search.searchroot = [ADSI]"GC://$($gc)"
+			$smtpgc =  $search.findall() | Convert-ADSearchResult
+			if($smtpgc){
+				$error.clear()
+				$countSMTP  = ($smtpgc | measure-object).count
+				$gcobjects += $smtpgc
+				}
+			}	
+
+			if($SMTP){
+				$criticalobjects += $SMTP
+				$countSMTP = ($SMTP | measure-object).count
+				}
 				if($error)
 					{ "$(Get-TimeStamp) Error while retrieving mail flow and storage related objects $($error)" | out-file $logfilename -append ; $error.clear() }
 				else
 					{
 					if($SMTP)
-						{"$(Get-TimeStamp) Number of mail flow and storage related objects: $($countSMTP)" | out-file $logfilename -append}
+						{"$(Get-TimeStamp) Number of mail flow and storage related objects retrieved via LDAP: $($countSMTP)" | out-file $logfilename -append}
+					elseif($smtpgc)
+						{"$(Get-TimeStamp) Number of mail flow and storage related objects retrieved via GC: $($countSMTP)" | out-file $logfilename -appe
 					else
 						{"$(Get-TimeStamp) Cannot read mail flow and storage related objects with the account running the script" | out-file $logfilename -append}
 					}
@@ -1932,6 +2065,7 @@ if($ISets -eq $true)
 		}
 
 	}
+}
 
 $error.clear()
 
@@ -2086,7 +2220,11 @@ if($DynObjects){Remove-variable DynObjects}
 if($ADFSObjects){Remove-variable ADFSObjects}
 if($ADFSFarms){Remove-variable ADFSFarms}
 if($ADFSrootobj){Remove-variable ADFSrootobj}
-if($ADFSDeviceregObjects){Remove-variable ADFSDeviceregObjects}
+if($scps){Remove-variable scps}
+if($scpsdomain1){Remove-variable scpsdomain1}
+if($scpsdomain2){Remove-variable scpsdomain2}
+ 
+
 
 
 
@@ -2104,7 +2242,7 @@ write-output -inputobject "---- Exporting objects as XML ----"
 $criticalobjects = $criticalobjects | sort-object -unique -Property DistinguishedName
 "$(Get-TimeStamp) Removed LDAP objects collected twice or more" | out-file $logfilename -append
 # Exporting objects
-$criticalobjects | export-cliXML $adobjectsfilename
+$criticalobjects | export-cliXML $adobjectsfilename -Encoding UTF8
 "$(Get-TimeStamp) Objects retrieved via LDAP exported in ADobjects.xml" | out-file $logfilename -append
 if($error)
     { "$(Get-TimeStamp) Error while exporting objects retrieved via LDAP $($error)" | out-file $logfilename -append ; $error.clear() }
@@ -2117,7 +2255,7 @@ if($gcobjects)
 	{
 	$gcobjects = $gcobjects | sort-object -unique -Property DistinguishedName
 	"$(Get-TimeStamp) Removed GC objects collected twice or more" | out-file $logfilename -append
-	$gcobjects | export-cliXML $gcADobjectsfilename
+	$gcobjects | export-cliXML $gcADobjectsfilename -Encoding UTF8
 	"$(Get-TimeStamp) Global Catalog objects exported in gcADobjects.xml" | out-file $logfilename -append
 	if($error)
 		{ "$(Get-TimeStamp) Error while exporting global catalog objects $($error)" | out-file $logfilename -append ; $error.clear() }
@@ -2283,7 +2421,7 @@ foreach ($criticalobject in $criticalobjects)
 # Sort by ftimeLastOriginatingChange to generate timeline and export as csv
 "$(Get-TimeStamp) Sorting AD replication metadata to generate timeline " | out-file $logfilename -append
 
-$Replinfo | Sort-Object -Property ftimeLastOriginatingChange | export-csv $timelinefilename -delimiter ";" -NoTypeInformation
+$Replinfo | Sort-Object -Property ftimeLastOriginatingChange | export-csv $timelinefilename -delimiter ";" -NoTypeInformation -Encoding UTF8
     if($error)
         { "$(Get-TimeStamp) Error while sortig timeline $($error)" | out-file $logfilename -append ; $error.clear() }
     else
