@@ -2072,32 +2072,121 @@ $error.clear()
 #Processing custom group, please fill in table at the begining of the script for processing
 if($groupscustom)
 	{
+    $cache=@{}
     "$(Get-TimeStamp) Custom groups provided by the analyst" | out-file $logfilename -append
 	foreach($grpcustom in $groupscustom)
 		{
-		$grpc = get-adobject -filter {Name -eq $grpcustom} -server $server -properties *
-		$criticalobjects += $grpc
-		if($isonline -eq $true)
+        Write-Output "Searching for group(s) '$grpcustom' ..."
+		try { $grpcs = get-adobject -filter {Name -eq $grpcustom} -server $server -properties * }
+        catch {
+			Write-Output "Error while retrieving group(s) '$grpcustom' : $_"
+			{ "$(Get-TimeStamp) Error while retrieving group(s) '$grpcustom' : $_" | out-file $logfilename -append ; }
+            continue
+        }
+        if ($grpcs -is [array]) { Write-Output "Got multiple results for '$grpcustom'" }
+        else { $grpcs = ($grpcs) }
+		foreach ($grpc in $grpcs)
 			{
-			$criticalobjects += (Get-ADGroupMember -recursive $grpc -server $server  | foreach-object{get-adobject $_ -server $server -properties *})
-			$nestedgrp = @()
-			$level1 = Get-ADGroupMember $grpc -server $server | where-object{$_.objectclass -eq "Group"} | select-object distinguishedName
-			if($level1)
+            Write-Output "isonline: $isonline"
+            Write-Output "grpc: $grpc"
+			$criticalobjects += $grpc
+			if($isonline -eq $true)
 				{
-				$nestedgrp += $level1
-				$nestedgrp  += $level1 | foreach-object{Get-ADGroupMember $_.DistinguishedName -server $server | where-object{$_.objectclass -eq "Group"} | select-object distinguishedName}
-				$criticalobjects += ($nestedgrp | foreach-object{get-adobject $_.DistinguishedName -server $server -properties *})
+            	try {
+                	Write-Output "Fetching members of '$grpc' ..."
+                	$members = Get-ADGroupMember -recursive $grpc -server $server
+					foreach ($member in $members)
+					{
+						try {
+							if ($cache.ContainsKey("$member")) {
+							   Write-Output "skipping member '$member' properties ..."
+                               continue
+                            }
+                            $cache["$member"]=1
+							Write-Output "fetching member '$member' properties ..."
+							$grpc_obj = get-adobject $member -server $server -properties *
+							$criticalobjects += ($grpc_obj)
+						}
+						catch {	
+							Write-Output "Error during group $grpc traversal: $_"
+							{ "$(Get-TimeStamp) Error during group $grpc traversal: $_" | out-file $logfilename -append ; }
+							continue
+						}
+                	}
+            	}
+				catch {
+					Write-Output "Unable to fetch group '$grpc' members: $_"
+					{ "$(Get-TimeStamp) Unable to fetch group '$grpc' members: $_" | out-file $logfilename -append ; }
+					continue
+				}
+				$nestedgrp = @()
+            	$level1 = @()
+				try {
+					$levels1 = Get-ADGroupMember $grpc -server $server | where-object{$_.objectclass -eq "Group"}
+					foreach ($l in $levels1) {
+						try {
+							$level1 += $l.distinguishedName
+						}
+						catch {
+							Write-Output "Unable to get distinghishedname from '$l': $_"
+							{ "$(Get-TimeStamp) Unable to get distinghishedname from '$l': $_" | out-file $logfilename -append ; }
+						}
+					}
+				}
+				catch {
+					Write-Output "Unable to fetch level1 group member for '$grpc' : $_"
+					{ "$(Get-TimeStamp) Unable to fetch level1 group member for '$grpc' : $_" | out-file $logfilename -append ; }
+					continue
+				}
+				if($level1.length -gt 0) {
+					$nestedgrp += $level1
+					$level1 | foreach-object {
+						$level1_obj = $_
+						try {
+							$level1_members = Get-ADGroupMember $_.DistinguishedName -server $server | where-object{$_.objectclass -eq "Group"} | select-object distinguishedName
+							$nestedgrp += ($level1_members)
+						}
+						catch {
+							Write-Output "Error getting level1 '$level1_obj' members: $_"
+							{ "$(Get-TimeStamp) Error getting level1 '$level1_obj' members: $_" | out-file $logfilename -append ; }
+							continue
+						}
+					}
+					$nestedgrp | foreach-object{
+						try {
+							if ($cache.ContainsKey("$_.DistinguishedName")) {
+							   Write-Output "skipping adobject $_.DistinguishedName ..."
+                               continue
+                            }
+                            Write-Output "fetching adobject $_.DistinguishedName ..."
+							$cache["$_.DistinguishedName"]=1
+							$nestedgrp_obj = get-adobject $_.DistinguishedName -server $server -properties *
+							$criticalobjects += ($nestedgrp_obj)
+						}
+						catch {
+							Write-Output "Error getting nested group object: $_"
+							{ "$(Get-TimeStamp) Error getting nested group object: $_" | out-file $logfilename -append ; }
+							continue
+						}
+					}
 				}
 			}
-		else
-			{
-			$customgrpc = ($grpc | select-object -expandproperty member  | foreach-object{get-adobject $_ -server $server -properties *})
-			$criticalobjects += $customgrpc
-			$continue = $customgrpc | where-object{$_.ObjectClass -eq "Group"}
-			if($continue)
-				{foreach($grp in $continue){$customgrpcn2 = $grp | select-object -expandproperty member  | foreach-object{get-adobject $_ -server $server -properties *};$criticalobjects += $customgrpcn2}}
+			else {
+				$customgrpc = ($grpc | select-object -expandproperty member  | foreach-object{get-adobject $_ -server $server -properties *})
+				$criticalobjects += $customgrpc
+				$continue = $customgrpc | where-object{$_.ObjectClass -eq "Group"}
+				if($continue)
+					{
+						foreach ($grp in $continue) {
+							$customgrpcn2 = $grp | select-object -expandproperty member  | foreach-object {
+								get-adobject $_ -server $server -properties *
+							};
+							$criticalobjects += $customgrpcn2
+						}
+					}
+				}
 			}
-		}
+        }
 
         if($error)
             { "$(Get-TimeStamp) Error while retrieving custom groups $($error)" | out-file $logfilename -append ; $error.clear() }
