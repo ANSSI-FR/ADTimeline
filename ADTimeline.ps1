@@ -128,11 +128,11 @@ function Get-TimeStamp
 
 if($isonline -eq $true)
 	{
-	"$(Get-TimeStamp) Script running in online mode" | out-file logfile.log
+	"$(Get-TimeStamp) Script running in online mode" | out-file logfile.log -append
 	}
 else
 	{
-	"$(Get-TimeStamp) Script running in offline mode" | out-file logfile.log
+	"$(Get-TimeStamp) Script running in offline mode" | out-file logfile.log -append
 	}
 
 # Getting folder fully qualifed name length to compute MAX_PATH
@@ -216,7 +216,7 @@ else
 	{
 	#Get current domain SID and PDCe, will be used later
 	$domSID = $dom.ObjectSID.value
-	$PDCe = (($dom.fsmoRoleOwner).replace($root.configurationNamingContext,"")).replace("CN=NTDS Settings,","")
+	$PDCe = ((($dom.fsmoRoleOwner).replace($root.configurationNamingContext,"")).replace("CN=NTDS Settings,","")).replace("CN=Sites,","CN=Sites")
 	"$(Get-TimeStamp) Domain root information retrieved" | out-file logfile.log -append
 	"$(Get-TimeStamp) Domain DistinguishedName is: $($dom.distinguishedName) " | out-file logfile.log -append
 	"$(Get-TimeStamp) Domain SID is: $($domSID)" | out-file logfile.log -append
@@ -354,7 +354,7 @@ if($error)
     { "$(Get-TimeStamp) Error while retrieving root of the schema partition $($error)" | out-file $logfilename -append ; $error.clear() }
 else
 	{
-	$SchemaMaster = (($rootschema.fsmoRoleOwner).replace($root.configurationNamingContext,"")).replace("CN=NTDS Settings,","")
+	$SchemaMaster = ((($rootschema.fsmoRoleOwner).replace($root.configurationNamingContext,"")).replace("CN=NTDS Settings,","")).replace("CN=Sites,","CN=Sites")
 	"$(Get-TimeStamp) Root of the schema partition retrieved" | out-file $logfilename -append
 	"$(Get-TimeStamp) Schema version is $($rootschema.objectVersion)" | out-file $logfilename -append
 	}
@@ -403,7 +403,7 @@ $countdom1 = ($dom1 | measure-object).count
 if($error)
     { "$(Get-TimeStamp) Error while retrieving objects directly under domain root $($error)" | out-file $logfilename -append ; $error.clear() }
 else {"$(Get-TimeStamp) Number of objects directly under domain root, OU excluded:  $($countdom1)" | out-file $logfilename -append
-	$inframaster = ((($dom1 | where-object{($_.Name -eq "Infrastructure") -and ($_.ObjectClass -eq "infrastructureUpdate")}).fsmoRoleOwner).replace($root.configurationNamingContext,"")).replace("CN=NTDS Settings,","")
+	$inframaster = (((($dom1 | where-object{($_.Name -eq "Infrastructure") -and ($_.ObjectClass -eq "infrastructureUpdate")}).fsmoRoleOwner).replace($root.configurationNamingContext,"")).replace("CN=NTDS Settings,","")).replace("CN=Sites,","CN=Sites")
 	}
 
 #Objects protected by the SDProp process (AdminSDHolder ACL, Admincount=1)
@@ -475,8 +475,8 @@ else
 		}
 	}
 
-#Grabing the DNSAdmin groups and its members well knwon SID is S-1-5-21-<Domain>-1102
-$dndnsadminSID = $domSID + "-1102"
+#Grabing the DNSAdmin groups and its members well knwon SID is S-1-5-21-<Domain>-1101
+$dndnsadminSID = $domSID + "-1101"
 $dnsadmin =  Get-ADObject -filter {ObjectSID -eq $dndnsadminSID} -Server $server -properties *
 #Group might not exist if DNS role not installed
 if($dnsadmin)
@@ -516,6 +516,52 @@ if($dnsadmin)
 		else
 			{"$(Get-TimeStamp) Number of DNSAdmins group members: $($countdnsadminsmembers)" | out-file $logfilename -append}
 	}
+
+
+
+
+#Grabing the DNSUpdateProxy groups and its members well knwon SID is S-1-5-21-<Domain>-1102
+$DNSUpdateProxySID = $domSID + "-1102"
+$DNSUpdateProxy =  Get-ADObject -filter {ObjectSID -eq $DNSUpdateProxySID} -Server $server -properties *
+#Group might not exist if DNS role not installed
+if($DNSUpdateProxy)
+	{
+	$criticalobjects += $DNSUpdateProxy
+	if($isonline -eq $true)
+		{
+		#Get recursive membership
+		$DNSUpdateProxymembers = (Get-ADGroupMember -recursive $DNSUpdateProxy -server $server  | foreach-object{get-adobject $_ -server $server -properties *})
+		#Get groups till level 2 is reached if groups are nested.
+			if($DNSUpdateProxymembers)
+			{
+			$criticalobjects += $DNSUpdateProxymembers
+			$nestedgrp = @()
+			$level1 = Get-ADGroupMember $DNSUpdateProxy  -server $server | where-object{$_.objectclass -eq "Group"} | select-object distinguishedName
+				if($level1)
+				{
+				$nestedgrp += $level1
+				$nestedgrp  += $level1 | foreach-object{Get-ADGroupMember $_.DistinguishedName -server $server | where-object{$_.objectclass -eq "Group"} | select-object distinguishedName}
+				$criticalobjects += ($nestedgrp | foreach-object{get-adobject $_.DistinguishedName -server $server -properties *})
+				}
+			}
+		}
+	else
+		{
+		#Cannot use recursive membership cmdlet in offline mode, get direct members only
+		$DNSUpdateProxymembers = ($DNSUpdateProxy | select-object -expandproperty member  | foreach-object{get-adobject $_ -server $server -properties *})
+		$criticalobjects += $DNSUpdateProxymembers
+		#Get groups till level 2 is reached if groups are nested.
+		$continue = $DNSUpdateProxymembers | where-object{$_.ObjectClass -eq "Group"}
+			if($continue)
+				{foreach($grp in $continue){$dnsadmingrpcn2 = $grp | select-object -expandproperty member  | foreach-object{get-adobject $_ -server $server -properties *};$criticalobjects += $dnsadmingrpcn2}}
+		}
+				$countDNSUpdateProxymembers = ($DNSUpdateProxymembers | measure-object).count
+		if($error)
+			{ "$(Get-TimeStamp) Error while retrieving DNSUpdateProxy group members $($error)" | out-file $logfilename -append ; $error.clear() }
+		else
+			{"$(Get-TimeStamp) Number of DNSUpdateProxy group members: $($countDNSUpdateProxymembers)" | out-file $logfilename -append}
+	}
+
 
 #Grabing Group Policy Creators owners, using SID because name depends on the installation language
 $gpoownersSID = $domSID + "-520"
@@ -901,7 +947,7 @@ else
 	}
 
 
-#Objects with kerberos delagation configured
+#Objects with kerberos delegation configured
 $delegkrb = Get-ADObject -filter {(UserAccountControl -BAND 0x0080000) -OR (UserAccountControl -BAND 0x1000000) -OR (msDS-AllowedToDelegateTo -like "*") -OR (msDS-AllowedToActOnBehalfOfOtherIdentity -like "*")} -Server $server -properties *
 if(($error -like '*timeout*') -or ($error -like '*invalid enumeration context*'))
 	{
@@ -973,7 +1019,7 @@ $countsysobjects = ($sysobjects | measure-object).count
 if($error)
     { "$(Get-TimeStamp) Error while retrieving objects under the system container $($error)" | out-file $logfilename -append ; $error.clear() }
 else {
-	$ridmanager = ((($sysobjects | where-object{$_.ObjectClass  -eq "rIDManager"}).fsmoRoleOwner).replace($root.configurationNamingContext,"")).replace("CN=NTDS Settings,","")
+	$ridmanager = (((($sysobjects | where-object{$_.ObjectClass  -eq "rIDManager"}).fsmoRoleOwner).replace($root.configurationNamingContext,"")).replace("CN=NTDS Settings,","")).replace("CN=Sites,","CN=Sites")
 	"$(Get-TimeStamp) Number of objects of interest under the system container (GPOs, domain trusts, DPAPI secrets, AdminSDHolder, RID Manager, WMI filters and domainPolicy): $($countsysobjects)" | out-file $logfilename -append
 }
 
@@ -1139,7 +1185,7 @@ if($OtherDomainSIDHistory)
 	$search = new-object System.DirectoryServices.DirectorySearcher
 	$search.searchroot = [ADSI]"GC://$($gc)"
 	"$(Get-TimeStamp) Number of accounts in other domains within the forest which have an SIDHistory belonging to the current domain $($NbOtherDomainSIDHistory)" | out-file $logfilename -append
-	# Foreach account in other domains within the forest which have an SIDHistory belonging to the current domain we compare its SIDHistory with SIDs of accounts protected in the current domain by SDProp. If there is a match that could be suspicious.
+	# Foreach account in other domains within the forest which have an SIDHistory belonging to the current domain we compare his SIDHistory with SIDs of accounts protected in the current domain by SDProp. If there is a match that could be suspicious.
 	foreach($objSIDH in $OtherDomainSIDHistory)
 			{
 			foreach($SIDH in $objSIDH.SIDHistory)
@@ -1290,11 +1336,11 @@ else {
 	"$(Get-TimeStamp) Number of pKIEnrollmentService objects in the configuration partition: $($countpKIEnrollmentService)" | out-file $logfilename -append
 	"$(Get-TimeStamp) Number of AuthNPolicy or silos objects in the configuration partition: $($countAuthN)" | out-file $logfilename -append
 	$crossrefcontainer = $sitesIGC | where-object{($_.Name -eq "Partitions") -and ($_.ObjectClass -eq "crossRefContainer")}
-	$DomainNamingMaster = (($crossrefcontainer.fsmoRoleOwner).replace($root.configurationNamingContext,"")).replace("CN=NTDS Settings,","")
+	$DomainNamingMaster = (((($crossrefcontainer.fsmoRoleOwner).replace($root.configurationNamingContext,"")).replace("CN=NTDS Settings,","")).replace("CN=Sis,","")).replace("CN=Sites,","CN=Sites")
 	}
 
 
-# Displayin FSMO role olders and FFL + DFL
+# Displayin FSMO role holders and FFL + DFL
 if($PDCe)
 	{ "$(Get-TimeStamp) PDCe for the domain is: $($PDCe)" | out-file $logfilename -append}
 if($inframaster)
@@ -2359,13 +2405,13 @@ else {
 	}
 
 
-# generation TimeLine � partir des metadata de r�plication
+# Generating TimeLine from replication metadata
 write-output -inputobject "---- Export done ----"
 write-output -inputobject "---- Generating AD timeline ----"
 "$(Get-TimeStamp) Starting to retrieve AD replication metadata" | out-file $logfilename -append
 $countcrit = ($criticalobjects | measure-object).count
 "$(Get-TimeStamp) Number of objects to process: $($countcrit)" | out-file $logfilename -append
-write-output -inputobject "----$($countcrit) Objects to process ----"
+write-output -inputobject "---- $($countcrit) Objects to process ----"
 
 
 $groupClass = "CN=Group," + $root.SchemaNamingContext
