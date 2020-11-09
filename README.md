@@ -38,7 +38,6 @@ Objects considered of interest retrieved by the script include:
 - DPAPI secrets.
 - Domain controllers (Computer objects, ntdsdsa and server objects).
 - DNS zones.
-- Group Policy Objects (existing and deleted).
 - WMI filters.
 - Accounts with suspicious SIDHistory (scope is forest wide).
 - Sites.
