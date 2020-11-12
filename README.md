@@ -12,6 +12,7 @@
     2. [Sourcetypes](#sourcetype)
     3. [AD General information dashboards](#infradashboards)
     4. [AD threat hunting dashboards](#threathuntdashboards)
+    5. [Enhance your traditional event logs threat hunting with ADTimeline](#threathuntevtx)
 
 # The ADTimeline PowerShell script:  <a name="thescript"></a>
 
@@ -259,3 +260,98 @@ This dashboard analyses the Active Directory timeline and highlights some modifi
 - GPOs: A table of GPOs modifications having an audit client side extension is displayed, an attacker could change the audit settings on the domain to perform malicious actions with stealth. Finally modifications which could result in a GPO processing malfunctioning are displayed, this includes gPCFunctionalityVersion, gPCFileSysPath or versionNumber attribute modification.
 - DCshadow detection: The DCshadow is an attack which allows an attacker to push modifications in Active Directory and bypass traditional alerting by installing a fake DC. It was first presented by Vincent Le Toux and Benjamin Delpy at the BlueHat IL 2018 conference. The first graph will try to detect the installation of the fake DC by analyzing server and nTDSDSA ObjectClass. The two following tables will try to detect replication metadata tampering by analyzing usnOriginatingChange and usnLocalChange values which should increment through the time.
 - Schema and configuration partition suspicious modifications: The first graph displays Active Directory attribute modifications related to the configuration and schema partitions which can lower the security of the domain, used as backdoor by an attacker or hide information to the security team. The second graph is relevant if you have Exchange on premises and track modifications in the configuration partition which can be a sign of mail exfiltration.
+
+## Enhance your traditional event logs threat hunting with ADTimeline: <a name="threathuntevtx"></a>
+
+The *adobjects* sourcetype is a set of data which can be used to uncover suspicious activity by performing Active Directory educated queries on the Windows event logs. We assume the sourcetype used for event logs is called *winevent* and its *EventData* part has the correct field extraction applied, for example *EventID 4624* has among other fields *TargetUserName* and *TargetUserSid* extracted:
+
+![EVtx](./SA-ADTimeline/appserver/static/images/tuto10.png)
+
+You can perfrom similar queries with the [Splunk App for Windows Infrastructure](https://docs.splunk.com/Documentation/MSApp/2.0.0/Reference/Aboutthismanual) and the [Splunk Supporting Add-on for Active Directory](https://docs.splunk.com/Documentation/SA-LdapSearch/3.0.0/User/AbouttheSplunkSupportingAdd-onforActiveDirectory). Here are some queries using ADTimeline data and Windows event logs which can help with your threat hunt.
+
+- Statistics on privileged accounts logons:
+
+```vb
+index="*" sourcetype="winevent" EventID="4624" Channel="Security" 
+[ search index="*" sourcetype=adobjects  ((ObjectClass = "user" OR ObjectClass = "inetOrgPerson") AND adminCount=1) earliest = 1 latest = now() | rename SID as TargetUserSid | fields TargetUserSid ] 
+| strcat TargetDomainName "\\" TargetUserName TargetFullName | stats values(TargetFullName) as TargetFullName , values(LogonType) as logonTypes, values(IpAddress) as IpAdresses, values(Computer) as Computers, dc(Computer) as CountComputers, dc(IpAddress) as CountIpAdresses by TargetUserSid
+```
+- Get processes running under a privileged account, [detailed process auditing](https://docs.microsoft.com/en-us/windows-server/identity/ad-ds/manage/component-updates/command-line-process-auditing) should be enabled:
+
+```vb
+index="*" sourcetype="winevent" EventID="4688" Channel="Security" 
+[search index="*" sourcetype=adobjects  ((ObjectClass = "user" OR ObjectClass = "inetOrgPerson") AND adminCount=1) earliest = 1 latest = now() | rename SamAccountName as TargetUserName | fields TargetUserName] 
+OR [search index="*" sourcetype=adobjects  ((ObjectClass = "user" OR ObjectClass = "inetOrgPerson") AND adminCount=1) earliest = 1 latest = now() | rename SID as SubjectUserSid | fields SubjectUserSid] 
+|  stats values(CommandLine) by Computer, TargetUserName,SubjectUserName
+```
+- Get all privileged accounts PowerShell activity eventlogs:
+
+```vb
+index="*" sourcetype="winevent" Channel="*PowerShell*"  
+[search index="*" sourcetype=adobjects  ((ObjectClass = "user" OR ObjectClass = "inetOrgPerson") AND adminCount=1) earliest = 1 latest = now() | dedup SamAccountName | return 1000 $SamAccountName]
+```
+- Detect Kerberoasting possible activity:
+
+```vb
+index="*" sourcetype="winevent" Channel="Security" EventID="4769" 
+[search index="*" sourcetype=adobjects (ObjectClass = "user" OR ObjectClass = "inetOrgPerson") AND (SPNs=* AND NOT Name=krbtgt) earliest = 1 latest = now() | rename SID as ServiceSid | fields ServiceSid] 
+| strcat TargetDomainName "\\" TargetUserName TargetFullName  
+|  eval time=strftime(_time,"%Y-%m-%d %H:%M:%S") 
+|  stats list(ServiceName) as Services, dc(ServiceName) as nbServices, list(time) as time by IpAddress, TicketEncryptionType 
+| sort -nbServices
+```
+
+- Detect abnormal processes running under Kerberoastable accounts, [detailed process auditing](https://docs.microsoft.com/en-us/windows-server/identity/ad-ds/manage/component-updates/command-line-process-auditing) should be enabled:
+
+```vb
+index="*" sourcetype="winevent" Channel="Security" EventID="4688" 
+[search index="*" sourcetype=adobjects  (ObjectClass = "user" OR ObjectClass = "inetOrgPerson") AND (SPNs=* AND NOT Name=krbtgt)  earliest = 1 latest = now()   | rename SamAccountName as TargetUserName | fields TargetUserName ] 
+OR  [search index="*" sourcetype=adobjects  (ObjectClass = "user" OR ObjectClass = "inetOrgPerson") AND (SPNs=* AND NOT Name=krbtgt)  earliest = 1 latest = now()   | rename SID as SubjectUserSid | fields SubjectUserSid ] 
+|  stats values(CommandLine) as cmdlines, values(TargetUserName) as TargetSubjectNames, values(SubjectUserName) as SubjectUserNames by Computer
+```
+- Detect abnormal Kerberoastable user account logons:
+
+```vb
+index="*" sourcetype="winevent" Channel="Security" EventID="4624" 
+[search index="*" sourcetype=adobjects   (ObjectClass = "user" OR ObjectClass = "inetOrgPerson") AND (SPNs=* AND NOT Name=krbtgt)  earliest = 1 latest = now() | rename SID as TargetUserSid  | fields TargetUserSid] 
+| strcat TargetDomainName "\\" TargetUserName TargetFullName | stats values(TargetFullName) as TargetFullNames, values(IpAddress) as IpAddresses by LogonType, Computer
+```
+
+- Detect abnormal AS-REP roastable user account logons:
+
+```vb
+index="*" sourcetype="winevent" Channel="Security" EventID="4624" 
+[search index="*" sourcetype=adobjects (ObjectClass = "user" OR ObjectClass = "inetOrgPerson") earliest = 1 latest = now() |  eval eval_asrep_bit = floor(userAccountControl / pow(2, 22)) %2 | search eval_asrep_bit = 1 |  rename SID as TargetUserSid  | fields TargetUserSid]  
+| strcat TargetDomainName "\\" TargetUserName TargetFullName | stats values(TargetFullName) as TargetFullNames, values(IpAddress) as IpAddresses by LogonType, Computer
+```
+- Privileged accounts with flag "cannot be delegated" not set authenticating against computer configured for unconstrained delegation:
+
+```vb
+index="*" sourcetype="winevent" EventID="4624" Channel="Security" 
+[search index="*" sourcetype=adobjects ObjectClass = "Computer" earliest = 1 latest = now() | eval eval_deleg_bit = floor(userAccountControl / pow(2, 19)) %2  | search  eval_deleg_bit = 1 | eval eval_dc_bit = floor(userAccountControl / pow(2, 13)) %2 |  eval eval_rodc_bit = floor(userAccountControl / pow(2, 26)) %2 | search eval_dc_bit = 0 AND eval_rodc_bit = 0 |   rename dNSHostName as Computer | fields Computer] 
+|  search *   [search index="*" sourcetype=adobjects  ((ObjectClass = "user" OR ObjectClass = "inetOrgPerson") AND adminCount=1) earliest = 1 latest = now() | eval canbedelagated = round(((userAccountControl / pow(2, 20)) %2), 0) | search canbedelagated = 0 | rename SID as TargetUserSid  | fields TargetUserSid ] 
+|  strcat TargetDomainName "\\" TargetUserName TargetFullName 
+| table  _time, Computer, TargetFullName, IpAddress, LogonType, LogonProcessName
+```
+
+- Detect possible [printer bug](https://posts.specterops.io/not-a-security-boundary-breaking-forest-trusts-cd125829518d) triggering:
+
+```vb
+index="*" sourcetype="winevent" EventID="4624" Channel="Security" TargetUserName = "*$" NOT TargetUserSid="S-1-5-18"
+[search index="*" sourcetype=adobjects ObjectClass = "Computer"  earliest = 1 latest = now() |  eval eval_deleg_bit = floor(userAccountControl / pow(2, 19)) %2  | search  eval_deleg_bit = 1 | eval eval_dc_bit = floor(userAccountControl / pow(2, 13)) %2 |  eval eval_rodc_bit = floor(userAccountControl / pow(2, 26)) %2 | search eval_dc_bit = 0 AND eval_rodc_bit = 0  |  rename dNSHostName as Computer | fields Computer]
+| strcat TargetDomainName "\\" TargetUserName TargetFullName | stats values(LogonType), values(IpAddress), values(LogonProcessName) count by Computer, TargetFullName
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
