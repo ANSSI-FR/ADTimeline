@@ -27,12 +27,12 @@ if($customgroups)
 		$groupscustom = $customgroups
 		"---- Custom groups argument is an array ----"
 		}
-	else 
+	else
 		{
 		write-output -inputobject "---- Wrong argument object type ----"
 		Exit $WRONG_ARG_TYPE
 		}
-		
+
 	}
 
 # You can also directly uncomment and edit the below $customgroups variable if you do not want to set an argument
@@ -40,7 +40,7 @@ if($customgroups)
 # $groupscustom = ("VIP-group1","ESX-Admins","Tier1-admins")
 
 
-# Set Variables for error handling 
+# Set Variables for error handling
 Set-Variable -name ERR_BAD_OS_VERSION -option Constant -value 1
 Set-Variable -name ERR_NO_AD_MODULE   -option Constant -value 2
 Set-Variable -name ERR_NO_GC_FOUND   -option Constant -value 3
@@ -105,7 +105,7 @@ else {
 	if($error)
 		{
 		write-output -inputobject "---- DC is not Global Catalog, please provide a GC with the server argument ----"
-		Exit $ERR_NO_GC_FOUND	
+		Exit $ERR_NO_GC_FOUND
 		}
 	Else
 		{
@@ -257,13 +257,13 @@ else
 						{$ismsol = $true}
 					}
 				}
-			
+
 			}
 		}
 		 "$(Get-TimeStamp) Number of user accounts having an ACE on domain root: $($usrcount)" | out-file logfile.log -append
 			if($ismsol)
 				{"$(Get-TimeStamp) Account starting with MSOL having an ACE on domain root, Default Azure AD connect installation might be setup" | out-file logfile.log -append}
-			
+
 	}
 
 #Renaming log file and setting filenames for result files
@@ -297,7 +297,7 @@ if($domainfqdn)
 		}
 
 	}
-else 
+else
 	{
 	$logfilename = "logfile.log"
 	$timelinefilename = "timeline.csv"
@@ -459,8 +459,8 @@ $guestaccsid = $domSID + "-501"
 $guestacc =  Get-ADObject -filter {ObjectSID -eq $guestaccsid} -Server $server -properties *
 if($error)
 		{ "$(Get-TimeStamp) Error while retrieving Guest account $($error)" | out-file $logfilename -append ; $error.clear() }
-else 
-	{	
+else
+	{
 	if($guestacc)
 		{
 		$criticalobjects += $guestacc
@@ -468,10 +468,10 @@ else
 			{
 			"$(Get-TimeStamp) Guest account is disabled" | out-file $logfilename -append
 			}
-		else 
+		else
 			{
 			"$(Get-TimeStamp) Guest account is enabled!" | out-file $logfilename -append
-			}	
+			}
 		}
 	}
 
@@ -793,7 +793,7 @@ $countscpsdomain2 = ($knowrelevantscpsdomain2 | measure-object).count
 $remainingscpsdomain2  = $scpsdomain2 | where-object{($_.serviceClassName -ne "ldap") -and ($_.serviceClassName -ne "TSGateway") -and ($_.serviceClassName -ne "BEMainService") -and ($_.serviceClassName -ne "groupwise")}
 if($remainingscpsdomain2)
 	{
-	$rarescp = $remainingscpsdomain2 | Group-Object -Property serviceClassName | where-object{($_.count -le 3)}	
+	$rarescp = $remainingscpsdomain2 | Group-Object -Property serviceClassName | where-object{($_.count -le 3)}
 	if($rarescp)
 		{
 		foreach($rareserviceclassname in $rarescp)
@@ -801,8 +801,8 @@ if($remainingscpsdomain2)
 			$rarescptoadd = $remainingscpsdomain2 | Where-Object{$_.serviceClassName -eq $rareserviceclassname.Name}
 			$countscpsdomain2 = $countscpsdomain2 + $rareserviceclassname.count
 			$criticalobjects += $rarescptoadd
-			}	
-		}	
+			}
+		}
 	}
 if($error)
     { "$(Get-TimeStamp) Error while retrieving Service Connection Point class objects of interest located in the domain partition $($error)" | out-file $logfilename -append ; $error.clear() }
@@ -1057,7 +1057,7 @@ if($adminSDHolder)
 					{$usrcount++
 					}
 				}
-			
+
 			}
 		}
 		 "$(Get-TimeStamp) Number of user accounts having an ACE on AdminSDHolder object: $($usrcount)" | out-file $logfilename -append
@@ -1562,7 +1562,7 @@ if($root.rootDomainNamingContext -eq $root.DefaultNamingContext)
 		{ "$(Get-TimeStamp) Error while testing existance of ADFS objects $($error)" | out-file $logfilename -append ; $error.clear() }
 	if($IsADFS -eq $true)
 		{
-		#Current domain is root domain using LDAP to retrieve ADFS Objects	
+		#Current domain is root domain using LDAP to retrieve ADFS Objects
 		$ADFSObjects = get-ADObject -searchbase $ADFS -filter * -server $server -properties *
 
 		if(($error -like '*timeout*') -or ($error -like '*invalid enumeration context*'))
@@ -1586,11 +1586,11 @@ if($root.rootDomainNamingContext -eq $root.DefaultNamingContext)
 		if($error)
 			{ "$(Get-TimeStamp) Error while retrieving ADFS Objects $($error)" | out-file $logfilename -append ; $error.clear() }
 		else {"$(Get-TimeStamp) Number of ADFS farms (containers) in the current domain: $($countADFSFarms)" | out-file $logfilename -append}
-		
+
 		# If ADFS farms are found searching for service accounts running ADFS, ACE is present on objects storing DKM information
 		if($ADFSFarms -and $ADFSrootobj)
 			{
-			$accountsACEADFSRoot = 	($ADFSrootobj.ntsecuritydescriptor).getaccessrules($true , $true , [System.Security.Principal.SecurityIdentifier]) | Where-Object {$_.IdentityReference -like "S-1-5-21-*"} | group-object -property IdentityReference	
+			$accountsACEADFSRoot = 	($ADFSrootobj.ntsecuritydescriptor).getaccessrules($true , $true , [System.Security.Principal.SecurityIdentifier]) | Where-Object {$_.IdentityReference -like "S-1-5-21-*"} | group-object -property IdentityReference
 			foreach($ADFSFarm in $ADFSFarms)
 				{
 				#Comparing ACL of ADFS root object and child objects (i.e) farms in order to retrieve ADFS service accounts
@@ -1603,7 +1603,7 @@ if($root.rootDomainNamingContext -eq $root.DefaultNamingContext)
 					$userACE = $null
 					foreach($accountACE in $compareACEfarmroot)
 						{
-						#If ACE for the given SID is in the current domain, use LDAP	
+						#If ACE for the given SID is in the current domain, use LDAP
 						if($accountACE.Name -like "$domSID*")
 							{
 							$sidtomatch = $accountACE.Name
@@ -1622,18 +1622,18 @@ if($root.rootDomainNamingContext -eq $root.DefaultNamingContext)
 							}
 						if($error)
 							{ "$(Get-TimeStamp) Error while getting object SID $($accountACE.Name) with error $($error)" | out-file $logfilename -append ; $error.clear() }
-					
+
 						}
 					}
 
 				}
-		
+
 			}
 		}
 
 
 	}
-else 
+else
 	{
 	#Domain is child domain. Check if ADFS is in current domain or parent domain.
 	$ADFSroot = "CN=ADFS,CN=Microsoft,CN=Program Data," + ($root.rootDomainNamingContext)
@@ -1680,11 +1680,11 @@ else
 		if($error)
 			{ "$(Get-TimeStamp) Error while retrieving ADFS Objects $($error)" | out-file $logfilename -append ; $error.clear() }
 		else {"$(Get-TimeStamp) Number of ADFS farms (containers) in the current domain: $($countADFSFarms)" | out-file $logfilename -append}
-	
+
 		# If ADFS farms are found searching for service accounts running ADFS, ACE is present on objects storing DKM information
 		if($ADFSFarms -and $ADFSrootobj)
 			{
-			$accountsACEADFSRoot = 	($ADFSrootobj.ntsecuritydescriptor).getaccessrules($true , $true , [System.Security.Principal.SecurityIdentifier]) | Where-Object {$_.IdentityReference -like "S-1-5-21-*"} | group-object -property IdentityReference	
+			$accountsACEADFSRoot = 	($ADFSrootobj.ntsecuritydescriptor).getaccessrules($true , $true , [System.Security.Principal.SecurityIdentifier]) | Where-Object {$_.IdentityReference -like "S-1-5-21-*"} | group-object -property IdentityReference
 			foreach($ADFSFarm in $ADFSFarms)
 				{
 				#Comparing ACL of ADFS root object and child objects (i.e) farms in order to retrieve ADFS service accounts
@@ -1697,7 +1697,7 @@ else
 					$userACE = $null
 					foreach($accountACE in $compareACEfarmroot)
 						{
-						#If ACE for the given SID is in the current domain, use LDAP	
+						#If ACE for the given SID is in the current domain, use LDAP
 						if($accountACE.Name -like "$domSID*")
 							{
 							$sidtomatch = $accountACE.Name
@@ -1716,13 +1716,13 @@ else
 							}
 						if($error)
 							{ "$(Get-TimeStamp) Error while getting object SID $($accountACE.Name) with error $($error)" | out-file $logfilename -append ; $error.clear() }
-				
+
 						}
 					}
-				}		
-			}	
+				}
+			}
 		}
-	
+
 	}
 
 
@@ -1742,7 +1742,7 @@ if($ISets -eq $true)
 	if($error)
 		{ "$(Get-TimeStamp) Error while retrieving Exchange schema version $($error)" | out-file $logfilename -append ; $error.clear() }
 	else {"$(Get-TimeStamp) Exchange schema version is: $($exchschemaver.rangeUpper)" | out-file $logfilename -append}
-	
+
 	if($root.rootDomainNamingContext -eq $root.DefaultNamingContext)
 		{
 		# If current domain is root domain, we do not need GC to retrieve Exchange objects information.
@@ -1823,7 +1823,7 @@ if($ISets -eq $true)
 				$countSMTP  = ($smtpgc | measure-object).count
 				$gcobjects += $smtpgc
 				}
-			}	
+			}
 
 		if($SMTP){
 			$criticalobjects += $SMTP
@@ -1840,7 +1840,7 @@ if($ISets -eq $true)
 				else
 						{"$(Get-TimeStamp) Cannot read mail flow and storage related objects with the account running the script" | out-file $logfilename -append}
 				}
-	
+
 		#Getting RBAC rol assignements
 		"$(Get-TimeStamp) Retrieving RBAC role assignements" | out-file $logfilename -append
 		$RBAC = Get-ADObject -SearchBase $serviceNC -SearchScope SubTree -filter {ObjectClass -eq "msExchRoleAssignment"} -server $server -properties *
@@ -1963,7 +1963,7 @@ if($ISets -eq $true)
 			}
 
 		}
-	
+
 	else
 		{
 		# If current domain is child domain, we need GC to retrieve some Exchange objects information.
@@ -2030,7 +2030,7 @@ if($ISets -eq $true)
 				$countSMTP  = ($smtpgc | measure-object).count
 				$gcobjects += $smtpgc
 				}
-			}	
+			}
 
 			if($SMTP){
 				$criticalobjects += $SMTP
@@ -2153,7 +2153,7 @@ if($groupscustom)
 							$grpc_obj = get-adobject $member -server $server -properties *
 							$criticalobjects += ($grpc_obj)
 						}
-						catch {	
+						catch {
 							Write-Output "Error during group $grpc traversal: $_"
 							{ "$(Get-TimeStamp) Error during group $grpc traversal: $_" | out-file $logfilename -append ; }
 							continue
@@ -2358,7 +2358,7 @@ if($ADFSrootobj){Remove-variable ADFSrootobj}
 if($scps){Remove-variable scps}
 if($scpsdomain1){Remove-variable scpsdomain1}
 if($scpsdomain2){Remove-variable scpsdomain2}
- 
+
 
 
 
@@ -2441,7 +2441,7 @@ foreach ($criticalobject in $criticalobjects)
 	else
 		{$obj = get-adobject $criticalobject.DistinguishedName -Properties msDS-ReplAttributeMetadata -server $server -IncludeDeletedObjects}
 
-	$metadas = $obj."msDS-ReplAttributeMetadata" | foreach-object{ ([xml] $_.Replace("`0","")).DS_REPL_ATTR_META_DATA }
+	$metadas = $obj."msDS-ReplAttributeMetadata" | foreach-object{ ([xml] $_.Replace("`0","").Replace("&","&amp;")).DS_REPL_ATTR_META_DATA }
 
 	if($criticalobject.whencreated)
 		{$whencreatedUTC = get-date (get-date($criticalobject.whencreated)).ToUniversalTime() -format u}
@@ -2505,7 +2505,7 @@ foreach ($criticalobject in $criticalobjects)
 			{$objgrp = get-adobject $criticalobject.DistinguishedName -Properties msDS-ReplValueMetadata -server $server -IncludeDeletedObjects}
 
 		if($isgcanduniversalorindom)
-			{if($objgrp."msDS-ReplValueMetadata"){$metadasgrp = $objgrp."msDS-ReplValueMetadata" | foreach-object{ ([xml] $_.Replace("`0","")).DS_REPL_VALUE_META_DATA}}}
+			{if($objgrp."msDS-ReplValueMetadata"){$metadasgrp = $objgrp."msDS-ReplValueMetadata" | foreach-object{ ([xml] $_.Replace("`0","").Replace("&","&amp;")).DS_REPL_VALUE_META_DATA}}}
 		else {$metadasgrp  = $null}
 
 			if($error)
@@ -2563,5 +2563,3 @@ $Replinfo | Sort-Object -Property ftimeLastOriginatingChange | export-csv $timel
         { "$(Get-TimeStamp) Timeline created" | out-file $logfilename -append }
 
 write-output -inputobject "---- Timeline created ----"
-
-
