@@ -126,7 +126,7 @@ $groupscustom = ("VIP-group1","ESX-Admis","Tier1-admins")
 
 ## Description: <a name="descriptionsplk"></a>
 
-The ADTimeline application for Splunk processes and analyses the Active Directory data collected by the ADTimeline PowerShell script.
+The ADTimeline application for Splunk processes and analyses the Active Directory data collected by the ADTimeline PowerShell script. The app was presented at the 32nd annual FIRST Conference, a recording of the presentation is available [here](https://www.first.org/conference/2020/recordings).
 
 The app's "Getting started" page will give you the instructions for the import process.
 
