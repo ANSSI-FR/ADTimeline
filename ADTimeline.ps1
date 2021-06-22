@@ -9,10 +9,13 @@
 # customgroups can also be an array, in case you import the list from a file (one group per line)
 # PS>$customgroups = get-content customgroups.txt
 # PS>./ADTimeline -customgroups $customgroups
+# Use parameter nofwdSMTP in a large MSExchange organization context with forwarders massively used.
+# PS>./ADTimeline -nofwdSMTPaltRecipient
 
 Param (
 [parameter(Mandatory=$false)][string]$server = $null,
-[parameter(Mandatory=$false)]$customgroups = $null
+[parameter(Mandatory=$false)]$customgroups = $null,
+[parameter(Mandatory=$false)][switch]$nofwdSMTP
 )
 
 if($customgroups)
@@ -427,6 +430,34 @@ $countSDPROP = ($SDPropObjects | measure-object).count
 if($error)
     { "$(Get-TimeStamp) Error while retrieving objects protected by the SDProp process $($error)" | out-file $logfilename -append ; $error.clear() }
 else {"$(Get-TimeStamp) Number of objects protected by the SDProp process: $($countSDPROP)" | out-file $logfilename -append}
+
+
+#Objects with mail forwarders (msExchGenericForwardingAddress, altRecipient)
+
+if(-not($nofwdSMTP))
+	{
+$ForwardedObjects = Get-ADObject  -SearchBase ($root.defaultNamingContext) -SearchScope SubTree -filter {(msExchGenericForwardingAddress -like "*") -or (altRecipient -like "*")} -Server $server -properties *
+if(($error -like '*timeout*') -or ($error -like '*invalid enumeration context*'))
+	{
+	$i = 1
+	while((($error -like '*timeout*') -or ($error -like '*invalid enumeration context*')) -and ($i -le 5))
+		{
+		$resultspagesize = 256 - $i * 40
+		write-output -inputobject "LDAP time out, trying again with ResultPageSize $($resultspagesize)"
+		$error.clear()
+		$ForwardedObjects = Get-ADObject -ResultPageSize $resultspagesize -SearchBase ($root.defaultNamingContext) -SearchScope SubTree -filter {(msExchGenericForwardingAddress -like "*") -or (altRecipient -like "*")} -Server $server -properties *
+		$i++
+		}
+	if($ForwardedObjects){write-output -inputobject "LDAP query succeeded with different ResultPageSize"}
+	else{write-output -inputobject "LDAP query failure despite different ResultPageSize, resuming script"}
+	}
+$criticalobjects += $ForwardedObjects
+$countForwardedObjects = ($ForwardedObjects | measure-object).count
+if($error)
+    { "$(Get-TimeStamp) Error while retrieving objects with forwarders $($error)" | out-file $logfilename -append ; $error.clear() }
+else {"$(Get-TimeStamp) Number of objects with forwaders: $($countForwardedObjects)" | out-file $logfilename -append}
+    }
+
 
 #Grabing "Pre Windows 2000 Compatibility access group", not recursive...
 $pre2000SID = "S-1-5-32-554"
@@ -1787,9 +1818,9 @@ if($ISets -eq $true)
 				else
 				{"$(Get-TimeStamp) ETS members processed, getting nested groups till level 2 " | out-file $logfilename -append}
 			}
-		# Fetching transport rules, accepted domains, SMTP connectors and Mailbox databases
+		# Fetching transport rules, accepted domains, remote domains, hybrid relationship, SMTP connectors, and Mailbox databases
 		$countSMTP = 0
-		$SMTP = Get-ADObject -searchbase $root.configurationNamingContext -filter {(ObjectClass -eq "msExchTransportRule") -or (ObjectClass -eq "msExchAcceptedDomain")  -or (ObjectClass -eq "msExchRoutingSMTPConnector")  -or (ObjectClass -eq "msExchSmtpReceiveConnector") -or (ObjectClass -eq "msExchMDB")} -server $server -Properties *
+		$SMTP = Get-ADObject -searchbase $root.configurationNamingContext -filter {(ObjectClass -eq "msExchTransportRule") -or (ObjectClass -eq "msExchAcceptedDomain") -or (ObjectClass -eq "msExchDomainContentConfig") -or (ObjectClass -eq "msExchCoexistenceRelationship")  -or (ObjectClass -eq "msExchRoutingSMTPConnector")  -or (ObjectClass -eq "msExchSmtpReceiveConnector") -or (ObjectClass -eq "msExchAcceptedDomain") -or (ObjectClass -eq "msExchMDB")} -server $server -Properties *
 		if(($error -like '*timeout*') -or ($error -like '*invalid enumeration context*'))
 			{
 			$i = 1
@@ -1798,7 +1829,7 @@ if($ISets -eq $true)
 				$resultspagesize = 256 - $i * 40
 				write-output -inputobject "LDAP time out, trying again with ResultPageSize $($resultspagesize)"
 				$error.clear()
-				$SMTP = Get-ADObject -ResultPageSize $resultspagesize -searchbase $root.configurationNamingContext -filter {(ObjectClass -eq "msExchTransportRule") -or (ObjectClass -eq "msExchAcceptedDomain")  -or (ObjectClass -eq "msExchRoutingSMTPConnector")  -or (ObjectClass -eq "msExchSmtpReceiveConnector") -or (ObjectClass -eq "msExchMDB")} -server $server -Properties *
+				$SMTP = Get-ADObject -ResultPageSize $resultspagesize -searchbase $root.configurationNamingContext -filter {(ObjectClass -eq "msExchTransportRule") -or (ObjectClass -eq "msExchAcceptedDomain") -or (ObjectClass -eq "msExchDomainContentConfig") -or (ObjectClass -eq "msExchCoexistenceRelationship") -or (ObjectClass -eq "msExchRoutingSMTPConnector")  -or (ObjectClass -eq "msExchSmtpReceiveConnector") -or (ObjectClass -eq "msExchMDB")} -server $server -Properties *
 				$i++
 				}
 			if($SMTP){write-output -inputobject "LDAP query succeeded with different ResultPageSize"}
@@ -1813,9 +1844,11 @@ if($ISets -eq $true)
 			$AcceptedCategory = "CN=ms-Exch-Accepted-Domain," + $root.SchemaNamingContext
 			$RouteCategory = "CN=ms-Exch-Routing-SMTP-Connector," + $root.SchemaNamingContext
 			$ReceiveCategory = "CN=ms-Exch-Smtp-Receive-Connector," + $root.SchemaNamingContext
+			$RemoteCategory = "CN=ms-Exch-Domain-Content-Config," + $root.SchemaNamingContext
+			$HybridCategory = "CN=ms-Exch-Coexistence-Relationship," + $root.SchemaNamingContext
 			$MDBCategory = "CN=ms-Exch-MDB," + $root.SchemaNamingContext
 			$MDBprivCategory = "CN=ms-Exch-Private-MDB," + $root.SchemaNamingContext
-			$search.filter = "(|(ObjectCategory=$($MDBprivCategory))(ObjectCategory=$($RouteCategory))(ObjectCategory=$($AcceptedCategory))(ObjectCategory=$($TransportCategory))(ObjectCategory=$($ReceiveCategory))(ObjectCategory=$($MDBCategory)))"
+			$search.filter = "(|(ObjectCategory=$($MDBprivCategory))(ObjectCategory=$($RouteCategory))(ObjectCategory=$($AcceptedCategory))(ObjectCategory=$($RemoteCategory))(ObjectCategory=$($HybridCategory))(ObjectCategory=$($TransportCategory))(ObjectCategory=$($ReceiveCategory))(ObjectCategory=$($MDBCategory)))"
 			$search.searchroot = [ADSI]"GC://$($gc)"
 			$smtpgc =  $search.findall() | Convert-ADSearchResult
 			if($smtpgc){
@@ -1992,9 +2025,9 @@ if($ISets -eq $true)
 		$gcobjects += $search.FindOne() | Convert-ADSearchResult
 		if($error)
 			{ "$(Get-TimeStamp) Error while retrieving Exchange Windows Permissions or Exchange servers groups $($error)" | out-file $logfilename -append ; $error.clear() }
-		# Fetching transport rules, accepted domains, SMTP connectors and Mailbox databases
+		# Fetching transport rules, accepted domains, remote domains, hybrid relationship, SMTP connectors, and Mailbox databases
 		$countSMTP = 0
-		$SMTP = Get-ADObject -searchbase $root.configurationNamingContext -filter {(ObjectClass -eq "msExchTransportRule") -or (ObjectClass -eq "msExchAcceptedDomain")  -or (ObjectClass -eq "msExchRoutingSMTPConnector")  -or (ObjectClass -eq "msExchSmtpReceiveConnector") -or (ObjectClass -eq "msExchMDB")} -server $server -Properties *
+		$SMTP = Get-ADObject -searchbase $root.configurationNamingContext -filter {(ObjectClass -eq "msExchTransportRule") -or (ObjectClass -eq "msExchAcceptedDomain") -or (ObjectClass -eq "msExchDomainContentConfig") -or (ObjectClass -eq "msExchCoexistenceRelationship") -or (ObjectClass -eq "msExchRoutingSMTPConnector")  -or (ObjectClass -eq "msExchSmtpReceiveConnector") -or (ObjectClass -eq "msExchMDB")} -server $server -Properties *
 
 		if(($error -like '*timeout*') -or ($error -like '*invalid enumeration context*'))
 			{
@@ -2004,7 +2037,7 @@ if($ISets -eq $true)
 				$resultspagesize = 256 - $i * 40
 				write-output -inputobject "LDAP time out, trying again with ResultPageSize $($resultspagesize)"
 				$error.clear()
-				$SMTP = Get-ADObject -ResultPageSize $resultspagesize -searchbase $root.configurationNamingContext -filter {(ObjectClass -eq "msExchTransportRule") -or (ObjectClass -eq "msExchAcceptedDomain")  -or (ObjectClass -eq "msExchRoutingSMTPConnector")  -or (ObjectClass -eq "msExchSmtpReceiveConnector") -or (ObjectClass -eq "msExchMDB")} -server $server -Properties *
+				$SMTP = Get-ADObject -ResultPageSize $resultspagesize -searchbase $root.configurationNamingContext -filter {(ObjectClass -eq "msExchTransportRule") -or (ObjectClass -eq "msExchAcceptedDomain") -or (ObjectClass -eq "msExchDomainContentConfig") -or (ObjectClass -eq "msExchCoexistenceRelationship") -or (ObjectClass -eq "msExchRoutingSMTPConnector")  -or (ObjectClass -eq "msExchSmtpReceiveConnector") -or (ObjectClass -eq "msExchMDB")} -server $server -Properties *
 				$i++
 				}
 			if($SMTP){write-output -inputobject "LDAP query succeeded with different ResultPageSize"}
@@ -2018,11 +2051,13 @@ if($ISets -eq $true)
 			$search.pagesize = 256
 			$TransportCategory = "CN=ms-Exch-Transport-Rule," + $root.SchemaNamingContext
 			$AcceptedCategory = "CN=ms-Exch-Accepted-Domain," + $root.SchemaNamingContext
+			$RemoteCategory = "CN=ms-Exch-Domain-Content-Config," + $root.SchemaNamingContext
+			$HybridCategory = "CN=ms-Exch-Coexistence-Relationship," + $root.SchemaNamingContext
 			$RouteCategory = "CN=ms-Exch-Routing-SMTP-Connector," + $root.SchemaNamingContext
 			$ReceiveCategory = "CN=ms-Exch-Smtp-Receive-Connector," + $root.SchemaNamingContext
 			$MDBCategory = "CN=ms-Exch-MDB," + $root.SchemaNamingContext
 			$MDBprivCategory = "CN=ms-Exch-Private-MDB," + $root.SchemaNamingContext
-			$search.filter = "(|(ObjectCategory=$($MDBprivCategory))(ObjectCategory=$($RouteCategory))(ObjectCategory=$($AcceptedCategory))(ObjectCategory=$($TransportCategory))(ObjectCategory=$($ReceiveCategory))(ObjectCategory=$($MDBCategory)))"
+			$search.filter = "(|(ObjectCategory=$($MDBprivCategory))(ObjectCategory=$($RouteCategory))(ObjectCategory=$($AcceptedCategory))(ObjectCategory=$($RemoteCategory))(ObjectCategory=$($HybridCategory))(ObjectCategory=$($TransportCategory))(ObjectCategory=$($ReceiveCategory))(ObjectCategory=$($MDBCategory)))"
 			$search.searchroot = [ADSI]"GC://$($gc)"
 			$smtpgc =  $search.findall() | Convert-ADSearchResult
 			if($smtpgc){
@@ -2415,6 +2450,8 @@ write-output -inputobject "---- $($countcrit) Objects to process ----"
 
 
 $groupClass = "CN=Group," + $root.SchemaNamingContext
+$personClass = "CN=Person," + $root.SchemaNamingContext
+
 # Initializing AD replication metadata object
 $Replinfo = [System.Collections.ArrayList]@()
 $i = 0
@@ -2504,13 +2541,14 @@ foreach ($criticalobject in $criticalobjects)
 		else
 			{$objgrp = get-adobject $criticalobject.DistinguishedName -Properties msDS-ReplValueMetadata -server $server -IncludeDeletedObjects}
 
-		if($isgcanduniversalorindom)
-			{if($objgrp."msDS-ReplValueMetadata"){$metadasgrp = $objgrp."msDS-ReplValueMetadata" | foreach-object{ ([xml] $_.Replace("`0","").Replace("&","&amp;")).DS_REPL_VALUE_META_DATA}}}
-		else {$metadasgrp  = $null}
-
 			if($error)
         			{ "$(Get-TimeStamp) Error while retrieving AD replication metadata attributes msDS-ReplValueMetadata for $($criticalobject.DistinguishedName) $($error)" | out-file $logfilename -append ; $error.clear() }
 
+					if($isgcanduniversalorindom -and $objgrp."msDS-ReplValueMetadata")
+						{
+						$metadasgrp = $objgrp."msDS-ReplValueMetadata" | foreach-object{ ([xml] $_.Replace("`0","")).DS_REPL_VALUE_META_DATA}
+					if($error)
+        				{ "$(Get-TimeStamp) Error while parsing AD replication metadata attributes msDS-ReplValueMetadata for $($criticalobject.DistinguishedName) $($error)" | out-file $logfilename -append ; $error.clear() }
 			else
 				{
 				$metadasgrpmbr = $metadasgrp | where-object{$_.pszAttributeName -eq "member"}
@@ -2545,7 +2583,77 @@ foreach ($criticalobject in $criticalobjects)
 
 					}
 				}
+		    }    
+            else {$metadasgrp  = $null}
 		}
+	
+		if(($criticalobject.ObjectCategory -eq $personClass) -and ($null -ne $criticalobject.altRecipient))
+		{
+		#For persons with altRecipients attribute we retrieve also the msDS-ReplValueMetadata attribute
+		$isgcanduniversalorindom = $true
+		if($nbviagc -and ($i -ge $nbviaLDAP))
+			{
+					$search = new-object System.DirectoryServices.DirectorySearcher
+					$search.searchroot = [ADSI]"GC://$($gc)"
+					$search.Tombstone = $true
+					$search.PropertiesToLoad.Addrange(('msDS-ReplValueMetadata','Name','DistinguishedName'))
+					$search.filter = "(DistinguishedName=$($criticalobject.DistinguishedName))"
+					$search.pagesize = 256
+					$objpers = 	$search.FindAll() | Convert-ADSearchResult
+			}
+
+		else
+			{$objpers = get-adobject $criticalobject.DistinguishedName -Properties msDS-ReplValueMetadata -server $server -IncludeDeletedObjects}
+
+            if($error)
+            { "$(Get-TimeStamp) Error while retrieving AD replication metadata attributes msDS-ReplValueMetadata for $($criticalobject.DistinguishedName) $($error)" | out-file $logfilename -append ; $error.clear() }
+
+		if($objpers."msDS-ReplValueMetadata")
+            {$metadaspers = $objpers."msDS-ReplValueMetadata" | foreach-object{ ([xml] $_.Replace("`0","")).DS_REPL_VALUE_META_DATA}
+
+			if($error)
+        			{ "$(Get-TimeStamp) Error while parsing AD replication metadata attributes msDS-ReplValueMetadata for $($criticalobject.DistinguishedName) $($error)" | out-file $logfilename -append ; $error.clear() }
+
+			else
+				{
+				$metadaspersrec = $metadaspers | where-object{$_.pszAttributeName -eq "altRecipient"}
+				if($metadaspersrec)
+					{
+					foreach($metada in $metadaspersrec)
+						{
+
+						$tmpobj = new-object psobject
+						add-member -InputObject $tmpobj -MemberType NoteProperty -Name ftimeLastOriginatingChange -Value $metada.ftimeLastOriginatingChange
+						add-member -InputObject $tmpobj -MemberType NoteProperty -Name Name -Value $obj.Name
+						add-member -InputObject $tmpobj -MemberType NoteProperty -Name pszAttributeName -Value $metada.pszAttributeName
+						add-member -InputObject $tmpobj -MemberType NoteProperty -Name ObjectClass -Value $criticalobject.ObjectClass
+						add-member -InputObject $tmpobj -MemberType NoteProperty -Name DN -Value $obj.DistinguishedName
+						add-member -InputObject $tmpobj -MemberType NoteProperty -Name ObjectCategory -Value $criticalobject.ObjectCategory
+						add-member -InputObject $tmpobj -MemberType NoteProperty -Name SamAccountName -Value $criticalobject.SamAccountName
+						add-member -InputObject $tmpobj -MemberType NoteProperty -Name dwVersion -Value $metada.dwVersion
+						add-member -InputObject $tmpobj -MemberType NoteProperty -Name WhenCreated -Value $whencreatedUTC
+						add-member -InputObject $tmpobj -MemberType NoteProperty -Name Member -Value $metada.pszObjectDn
+						add-member -InputObject $tmpobj -MemberType NoteProperty -Name ftimeCreated -Value $metada.ftimeCreated
+						add-member -InputObject $tmpobj -MemberType NoteProperty -Name ftimeDeleted -Value $metada.ftimeDeleted
+						add-member -InputObject $tmpobj -MemberType NoteProperty -Name SID -Value $criticalobject.objectSid
+						add-member -InputObject $tmpobj -MemberType NoteProperty -Name pszLastOriginatingDsaDN -Value $metada.pszLastOriginatingDsaDN
+	   					add-member -InputObject $tmpobj -MemberType NoteProperty -Name uuidLastOriginatingDsaInvocationID -Value $metada.uuidLastOriginatingDsaInvocationID
+	    				add-member -InputObject $tmpobj -MemberType NoteProperty -Name usnOriginatingChange -Value $metada.usnOriginatingChange
+						add-member -InputObject $tmpobj -MemberType NoteProperty -Name usnLocalChange -Value $metada.usnLocalChange
+
+	    				[void]$Replinfo.add($tmpobj)
+						if($error){ "$(Get-TimeStamp) Error while editing global AD replication metadata object $($error) for $($criticalobject.DistinguishedName)" | out-file $logfilename -append ; $error.clear() }
+						}
+
+
+					}
+				}
+		
+            }
+            else {$metadaspers  = $null}       
+        
+        }
+
 	}
 	$i++
 	}
