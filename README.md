@@ -61,6 +61,7 @@ Objects considered of interest retrieved by the script include:
 - ADFS DKM containers.
 - Service connection point objects considered of interest.
 - Custom groups which have to be manually defined.
+- User objects with mail forwarder enabled (msExchGenericForwardingAddress and altRecipient attributes).
 
 ## Prerequisites: <a name="prerequisites"></a>
 
@@ -86,6 +87,10 @@ Launch the script targetting localhost on port 3266:
 PS> .\AD-timeline.ps1 -server "127.0.0.1:3266"
 ```
 
+If you encounter performance issues when runnung against a large MSExchange organization with forwarders massively used, use the nofwdSMTP parameter:
+```DOS
+PS>.\ADTimeline -nofwdSMTPaltRecipient
+```
 ## Files generated <a name="files"></a>
 
 Output files are generated in the current directory:
