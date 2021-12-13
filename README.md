@@ -54,6 +54,7 @@ Objects considered of interest retrieved by the script include:
 - Exchange RBAC roles and accounts assigned to a role.
 - Exchange mail flow configuration objects.
 - Exchange mailbox databases objects.
+- Exchange Mailbox Replication Service objects
 - Deleted objects under the configuration partition.
 - Dynamic objects.
 - The directory service and RID manager objects.
@@ -87,7 +88,7 @@ Launch the script targetting localhost on port 3266:
 PS> .\AD-timeline.ps1 -server "127.0.0.1:3266"
 ```
 
-If you encounter performance issues when runnung against a large MSExchange organization with forwarders massively used, use the nofwdSMTP parameter:
+If you encounter performance issues when running against a large MSExchange organization with forwarders massively used, use the nofwdSMTP parameter:
 ```DOS
 PS>.\ADTimeline -nofwdSMTPaltRecipient
 ```
