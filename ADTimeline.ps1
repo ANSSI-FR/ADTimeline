@@ -1820,7 +1820,7 @@ if($ISets -eq $true)
 			}
 		# Fetching transport rules, accepted domains, remote domains, hybrid relationship, SMTP connectors, and Mailbox databases
 		$countSMTP = 0
-		$SMTP = Get-ADObject -searchbase $root.configurationNamingContext -filter {(ObjectClass -eq "msExchTransportRule") -or (ObjectClass -eq "msExchAcceptedDomain") -or (ObjectClass -eq "msExchDomainContentConfig") -or (ObjectClass -eq "msExchCoexistenceRelationship")  -or (ObjectClass -eq "msExchRoutingSMTPConnector")  -or (ObjectClass -eq "msExchSmtpReceiveConnector") -or (ObjectClass -eq "msExchAcceptedDomain") -or (ObjectClass -eq "msExchMDB")} -server $server -Properties *
+		$SMTP = Get-ADObject -searchbase $root.configurationNamingContext -filter {(ObjectClass -eq "msExchTransportRule") -or (ObjectClass -eq "msExchAcceptedDomain") -or (ObjectClass -eq "msExchDomainContentConfig") -or (ObjectClass -eq "msExchCoexistenceRelationship")  -or (ObjectClass -eq "msExchRoutingSMTPConnector")  -or (ObjectClass -eq "msExchSmtpReceiveConnector") -or (ObjectClass -eq "msExchAcceptedDomain") -or (ObjectClass -eq "msExchMDB") -or (ObjectClass -eq "msExchMRSRequest")} -server $server -Properties *
 		if(($error -like '*timeout*') -or ($error -like '*invalid enumeration context*'))
 			{
 			$i = 1
@@ -1829,7 +1829,7 @@ if($ISets -eq $true)
 				$resultspagesize = 256 - $i * 40
 				write-output -inputobject "LDAP time out, trying again with ResultPageSize $($resultspagesize)"
 				$error.clear()
-				$SMTP = Get-ADObject -ResultPageSize $resultspagesize -searchbase $root.configurationNamingContext -filter {(ObjectClass -eq "msExchTransportRule") -or (ObjectClass -eq "msExchAcceptedDomain") -or (ObjectClass -eq "msExchDomainContentConfig") -or (ObjectClass -eq "msExchCoexistenceRelationship") -or (ObjectClass -eq "msExchRoutingSMTPConnector")  -or (ObjectClass -eq "msExchSmtpReceiveConnector") -or (ObjectClass -eq "msExchMDB")} -server $server -Properties *
+				$SMTP = Get-ADObject -ResultPageSize $resultspagesize -searchbase $root.configurationNamingContext -filter {(ObjectClass -eq "msExchTransportRule") -or (ObjectClass -eq "msExchAcceptedDomain") -or (ObjectClass -eq "msExchDomainContentConfig") -or (ObjectClass -eq "msExchCoexistenceRelationship") -or (ObjectClass -eq "msExchRoutingSMTPConnector")  -or (ObjectClass -eq "msExchSmtpReceiveConnector") -or (ObjectClass -eq "msExchMDB") -or (ObjectClass -eq "msExchMRSRequest")} -server $server -Properties *
 				$i++
 				}
 			if($SMTP){write-output -inputobject "LDAP query succeeded with different ResultPageSize"}
@@ -2027,7 +2027,7 @@ if($ISets -eq $true)
 			{ "$(Get-TimeStamp) Error while retrieving Exchange Windows Permissions or Exchange servers groups $($error)" | out-file $logfilename -append ; $error.clear() }
 		# Fetching transport rules, accepted domains, remote domains, hybrid relationship, SMTP connectors, and Mailbox databases
 		$countSMTP = 0
-		$SMTP = Get-ADObject -searchbase $root.configurationNamingContext -filter {(ObjectClass -eq "msExchTransportRule") -or (ObjectClass -eq "msExchAcceptedDomain") -or (ObjectClass -eq "msExchDomainContentConfig") -or (ObjectClass -eq "msExchCoexistenceRelationship") -or (ObjectClass -eq "msExchRoutingSMTPConnector")  -or (ObjectClass -eq "msExchSmtpReceiveConnector") -or (ObjectClass -eq "msExchMDB")} -server $server -Properties *
+		$SMTP = Get-ADObject -searchbase $root.configurationNamingContext -filter {(ObjectClass -eq "msExchTransportRule") -or (ObjectClass -eq "msExchAcceptedDomain") -or (ObjectClass -eq "msExchDomainContentConfig") -or (ObjectClass -eq "msExchCoexistenceRelationship") -or (ObjectClass -eq "msExchRoutingSMTPConnector")  -or (ObjectClass -eq "msExchSmtpReceiveConnector") -or (ObjectClass -eq "msExchMDB") -or (ObjectClass -eq "msExchMRSRequest")} -server $server -Properties *
 
 		if(($error -like '*timeout*') -or ($error -like '*invalid enumeration context*'))
 			{
@@ -2037,7 +2037,7 @@ if($ISets -eq $true)
 				$resultspagesize = 256 - $i * 40
 				write-output -inputobject "LDAP time out, trying again with ResultPageSize $($resultspagesize)"
 				$error.clear()
-				$SMTP = Get-ADObject -ResultPageSize $resultspagesize -searchbase $root.configurationNamingContext -filter {(ObjectClass -eq "msExchTransportRule") -or (ObjectClass -eq "msExchAcceptedDomain") -or (ObjectClass -eq "msExchDomainContentConfig") -or (ObjectClass -eq "msExchCoexistenceRelationship") -or (ObjectClass -eq "msExchRoutingSMTPConnector")  -or (ObjectClass -eq "msExchSmtpReceiveConnector") -or (ObjectClass -eq "msExchMDB")} -server $server -Properties *
+				$SMTP = Get-ADObject -ResultPageSize $resultspagesize -searchbase $root.configurationNamingContext -filter {(ObjectClass -eq "msExchTransportRule") -or (ObjectClass -eq "msExchAcceptedDomain") -or (ObjectClass -eq "msExchDomainContentConfig") -or (ObjectClass -eq "msExchCoexistenceRelationship") -or (ObjectClass -eq "msExchRoutingSMTPConnector")  -or (ObjectClass -eq "msExchSmtpReceiveConnector") -or (ObjectClass -eq "msExchMDB") -or (ObjectClass -eq "msExchMRSRequest")} -server $server -Properties *
 				$i++
 				}
 			if($SMTP){write-output -inputobject "LDAP query succeeded with different ResultPageSize"}
