@@ -8,6 +8,7 @@
   <collection label="AD Threat hunting">
   <view name="investigate_timeframe" />
   <view name="suspicious_activity" />
+  <view name="suspicious_exchange_activity" />
   </collection>
   <view name="datasets" />
   <view name="reports" />

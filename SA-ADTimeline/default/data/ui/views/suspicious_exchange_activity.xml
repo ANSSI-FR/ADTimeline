@@ -1,0 +1,325 @@
+<form>
+  <label>Track suspicious Exchange activity</label>
+  <fieldset submitButton="false"></fieldset>
+  <row>
+    <panel>
+      <input type="dropdown" token="ad_index" searchWhenChanged="true">
+        <label>Choose index to process:</label>
+        <search>
+          <query>| tstats latest(_time) where index=*  by index</query>
+        </search>
+        <selectFirstChoice>true</selectFirstChoice>
+        <fieldForLabel>index</fieldForLabel>
+        <fieldForValue>index</fieldForValue>
+      </input>
+      <input type="dropdown" token="domain_host" searchWhenChanged="true">
+        <label>Choose AD Domain to process:</label>
+        <search>
+          <query>| tstats latest(_time) where index=$ad_index$ (sourcetype=adobjects OR sourcetype=gcobjects OR sourcetype=adtimeline)  by host</query>
+        </search>
+        <selectFirstChoice>true</selectFirstChoice>
+        <fieldForLabel>host</fieldForLabel>
+        <fieldForValue>host</fieldForValue>
+      </input>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Microsoft Exchange infrastructure:</title>
+          <single>
+            <title>Microsoft Exchange schema information, rangeUpper attribute of ms-Exch-Schema-Version-Pt object:</title>
+            <search>
+              <query>index=$ad_index$ host=$domain_host$ sourcetype=adobjects (ObjectClass=attributeSchema AND Name=ms-Exch-Schema-Version-Pt)  | table Name | appendpipe [stats count | eval "Name"="Void" | where count=0 | table "Name"] | eval checkExch =case(Name == "ms-Exch-Schema-Version-Pt", "Exchange installed in the AD forest", 1=1 , "Exchange not installed in the AD forest") | fields checkExch</query>
+              <earliest>$earliest$</earliest>
+              <latest>$latest$</latest>
+            </search>
+            <option name="drilldown">all</option>
+            <option name="height">50</option>
+            <option name="refresh.display">progressbar</option>
+          </single>
+        <html encoded="1">&lt;br/&gt;</html>
+          <single>
+            <search>
+              <query>index=$ad_index$ host=$domain_host$ sourcetype=adobjects (ObjectClass=attributeSchema AND Name=ms-Exch-Schema-Version-Pt)  | rex field=_raw "rangeUpper\"&gt;(?&lt;rangeUpper&gt;.+?)&lt;/I32&gt;" |  lookup ExchangeSchema_lookup rangeUpper AS rangeUpper OUTPUTNEW Exchange AS ExchangeV | stats count by ExchangeV, rangeUpper | rangemap field=rangeUpper low=15331-1000000 elevated=15312-15331 default=severe</query>
+              <earliest>$earliest$</earliest>
+              <latest>$latest$</latest>
+            </search>
+            <option name="drilldown">none</option>
+            <option name="height">50</option>
+            <option name="refresh.display">progressbar</option>
+          </single>
+    </panel>
+    <panel>
+      <table>
+        <title>Microsoft Exchange servers, msExchExchangeServer ObjectClass:</title>
+        <search>
+          <query>index=$ad_index$ host=$domain_host$ sourcetype=adobjects ObjectClass=msExchExchangeServer  | rex field=_raw "&lt;S&gt;Version (?&lt;ExchVersion&gt;.+?)&lt;/S&gt;" | stats count by Name, ExchVersion, whenCreated  | rename Name as "Exchange server name", ExchVersion as "Exchange server version", whenCreated as "Exchange server creation time" |  table "Exchange server name", "Exchange server version", "Exchange server creation time"</query>
+          <earliest>0</earliest>
+          <latest></latest>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">cell</option>
+        <format type="color" field="Exchange server version">
+          <colorPalette type="sharedList"></colorPalette>
+          <scale type="sharedCategory"></scale>
+        </format>
+      </table>
+      <html encoded="1">&lt;br/&gt;</html>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Possible mail exfiltration</title>
+      <html>
+      <p style="text-align:right;">
+          MITRE | ATT&amp;CK <a href="https://attack.mitre.org/techniques/T1114/" target="_blank">T1114</a>
+        </p>
+      </html>
+      <chart>
+        <title>Exchange mailbox Forwarders, Transport rules and Remote Domain creation</title>
+        <search>
+          <progress>
+            <condition match="$job.resultCount$ == 0">
+              <set token="show_html_lockout">toto</set>
+            </condition>
+            <condition>
+              <unset token="show_html_lockout"></unset>
+            </condition>
+          </progress>
+          <query>index=$ad_index$ host=$domain_host$ sourcetype=adtimeline pszAttributeName="msExchGenericForwardingAddress" OR "altRecipient"  OR (ObjectCategory="CN=ms-Exch-Domain-Content-Config,CN=Schema,CN=Configuration,DC=labo,DC=local" AND  pszAttributeName="whenCreated" ) OR (ObjectClass="msExchTransportRule" AND pszAttributeName="msExchTransportRuleXml") | timechart  span=1week count by pszAttributeName limit=0 | rename whenCreated as RemoteDomainCreation</query>
+          <earliest>-5y@h</earliest>
+          <latest></latest>
+        </search>
+        <option name="charting.axisTitleY.text">stats by week</option>
+        <option name="charting.chart">column</option>
+        <option name="charting.drilldown">all</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+      <table>
+        <title>Accounts with forwarder attribute modified</title>
+        <search>
+          <query>index=$ad_index$  host=$domain_host$  sourcetype=adtimeline pszAttributeName="altRecipient" OR pszAttributeName="msExchGenericForwardingAddress" | makemv delim=";" _raw | eval Value=mvindex(_raw,9) | sort -_time |rename Value as "Value (if altRecipient)" | table _time, DN,  pszAttributeName, dwVersion, "Value (if altRecipient)"</query>
+          <earliest>0</earliest>
+          <latest></latest>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">cell</option>
+        <option name="refresh.display">progressbar</option>
+        <format type="color" field="Value (if altRecipient)">
+          <colorPalette type="expression">case (like(value,"CN"), "#FE5D26" </colorPalette>
+        </format>
+      </table>
+      <table>
+        <title>Transport Rules forwarding messages</title>
+        <search>
+          <query>index=$ad_index$  host=$domain_host$ sourcetype=adobjects [search index=$ad_index$  host=$domain_host$ sourcetype=adtimeline (ObjectClass=msExchTransportRule AND  pszAttributeName=msExchTransportRuleXml) | table DN]| xpath outfield=WhenModified "//DT[@N='Modified']" | xpath outfield=whenCreated "//DT[@N='whenCreated']" | xpath outfield=transportRule "//S[@N='msExchTransportRuleXml']" | rex field=transportRule mode=sed "s/_x000D_|_x000A_|_x0009_//g" | xpath outfield=isActive field=transportRule "//@enabled" | xpath outfield=Recipient_address field=transportRule "//fork/recipient/@address" |xpath outfield=Action field=transportRule "//action/@name" |xpath outfield=Action_Detail field=transportRule "//action/@externalName" |xpath outfield=Action_Args field=transportRule "//argument/@*" | xpath outfield=Condition field=transportRule "//condition" | xpath outfield=Exception field=transportRule "//fork[@exception='true/]" |xpath outfield=Comments field=transportRule "//rule/@comments" |eval isActive=if(isnull(isActive),"true",isActive) |search Action IN (AddEnvelopeRecipient,RedirectMessage,ModerateMessageByUser,AddEnvelopeRecipient,AddToRecipient,AddCcRecipient,AddManagerAsRecipientType) |table WhenModified, whenCreated, Name, isActive, Recipient_address, Action, Action_Detail, Action_Args,Condition, Exception, Comments |sort -WhenModified</query>
+          <earliest>0</earliest>
+          <latest></latest>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">cell</option>
+        <option name="refresh.display">progressbar</option>
+        <format type="color" field="isActive">
+          <colorPalette type="sharedList"></colorPalette>
+          <scale type="sharedCategory"></scale>
+        </format>
+      </table>
+      <table>
+        <title>Remote Domains configuration details</title>
+        <search>
+          <query>index=$ad_index$  host=$domain_host$  sourcetype=adobjects ObjectCategory="CN=ms-Exch-Domain-Content-Config,CN=Schema,CN=Configuration,*"| rex field=_raw  "&lt;DT N=\"Modified\"&gt;(?&lt;Modified&gt;.+?)&lt;\/DT&gt;"| table _time, whenCreated, Modified, Name, Owner, DN</query>
+          <earliest>0</earliest>
+          <latest></latest>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">cell</option>
+        <option name="refresh.display">progressbar</option>
+        <format type="color" field="Name">
+          <colorPalette type="sharedList"></colorPalette>
+          <scale type="sharedCategory"></scale>
+        </format>
+      </table>
+      <chart>
+        <title>Exchange mailbox Import, Export, Discovery (msExchMRSRequest)</title>
+        <search>
+          <query>index=$ad_index$ host=$domain_host$ sourcetype=adtimeline ObjectClass=msExchMRSRequest AND  (pszAttributeName="isDeleted" OR pszAttributeName="whenCreated") | timechart  span=1week count by pszAttributeName limit=0 </query>
+          <earliest>0</earliest>
+          <latest></latest>
+        </search>
+        <option name="charting.axisTitleY.text">stats by week</option>
+        <option name="charting.chart">column</option>
+        <option name="charting.drilldown">all</option>
+        <option name="refresh.display">progressbar</option>
+
+      </chart>
+      <table>
+        <title>msExchMRSRequest details</title>
+        <search>
+          <query>index=$ad_index$  host=$domain_host$  sourcetype=adobjects | search [search index=$ad_index$  host=$domain_host$ sourcetype=adtimeline ObjectClass=msExchMRSRequest AND  (pszAttributeName="isDeleted" OR pszAttributeName="whenCreated")| eval temp=split(Name,":") | eval Object=mvindex(temp,1) | eval DN= "*" . Object . "*" | fields DN] | rex field=_raw "&lt;DT N=\"Created\"&gt;(?&lt;Created&gt;.+?)&lt;\/DT&gt;" | rex field=_raw "&lt;DT N=\"DisplayName\"&gt;(?&lt;DisplayName&gt;.+?)&lt;\/DT&gt;" | rex field=_raw "&lt;S N=\"msExchMailboxMoveSourceUserLink\"&gt;(?&lt;msExchMailboxMoveSourceUserLink&gt;.+?)&lt;\/S&gt;" | rex field=_raw "&lt;S N=\"msExchMailboxMoveFilePath\"&gt;(?&lt;msExchMailboxMoveFilePath&gt;.+?)&lt;\/S&gt;" | rex field=_raw "&lt;S N=\"msExchMailboxMoveSourceMDBLink\"&gt;(?&lt;msExchMailboxMoveSourceMDBLink&gt;.+?)&lt;\/S&gt;" | rex field=_raw "&lt;S N=\"msExchMailboxMoveTargetMDBLink\"&gt;(?&lt;msExchMailboxMoveTargetMDBLink&gt;.+?)&lt;\/S&gt;" | rex field=_raw "&lt;S N=\"DistinguishedName\"&gt;(?&lt;DistinguishedName&gt;.+?)&lt;\/S&gt;" | table  Created, DisplayName,  msExchMailboxMoveSourceUserLink,  msExchMailboxMoveFilePath, msExchMailboxMoveSourceMDBLink,  msExchMailboxMoveTargetMDBLink, DistinguishedName | sort Created</query>
+          <earliest>0</earliest>
+          <latest></latest>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">cell</option>
+        <option name="refresh.display">progressbar</option>
+        <format type="color" field="DisplayName">
+          <colorPalette type="sharedList"></colorPalette>
+          <scale type="sharedCategory"></scale>
+        </format>
+        <format type="color" field="msExchMailboxMoveFilePath">
+          <colorPalette type="expression">case (like(value,"aspx"),"#E94F37" )</colorPalette>
+        </format>
+      </table>
+
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Persistence</title>
+      <html>
+      <p style="text-align:right;">
+          MITRE | ATT&amp;CK <a href="https://attack.mitre.org/techniques/T1098/" target="_blank">T1098</a>
+        </p>
+      </html>
+      <chart>
+        <title>RBAC roles Editions</title>
+        <search>
+          <query>index=$ad_index$ host=$domain_host$ sourcetype=adtimeline ObjectClass=msExchRoleAssignment AND  pszAttributeName=msExchRoleAssignmentFlags  | bucket span=1week _time | stats count by _time ObjectClass | where ObjectClass != "msExchRoleAssignment" OR (ObjectClass="msExchRoleAssignment" AND count &lt; 50) | xyseries _time,ObjectClass,count</query>
+          <earliest>0</earliest>
+          <latest></latest>
+        </search>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.drilldown">all</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+      <table>
+        <title>RBAC Details</title>
+        <search>
+           <query>index=$ad_index$  sourcetype=adobjects ObjectClass=msExchRoleAssignment| rex field=_raw "&lt;S N=\"msExchUserLink\"&gt;(?&lt;msExchUserLink&gt;.+?)&lt;\/S&gt;" | rex field=_raw "&lt;S N=\"msExchRoleLink\"&gt;(?&lt;msExchRoleLink&gt;.+?)&lt;\/S&gt;" | rex field=_raw "&lt;S N=\"msExchDomainRestrictionLink\"&gt;(?&lt;msExchDomainRestrictionLink&gt;.+?)&lt;\/S&gt;"| table _time, Name, msExchUserLink, msExchRoleLink, msExchDomainRestrictionLink | sort -_time</query>
+          <earliest>0</earliest>
+          <latest></latest>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">cell</option>
+        <option name="refresh.display">progressbar</option>
+        <format type="color" field="dwVersion">
+          <colorPalette type="minMidMax" maxColor="#DC4E41" minColor="#FFFFFF"></colorPalette>
+          <scale type="minMidMax"></scale>
+        </format>
+        <format type="color" field="msExchRoleLink">
+          <colorPalette type="expression">case (like(value,"UnScoped Role Management"), "#FE5D26" , like(value,"Role Management"), "#F2C078" , like(value,"Impersonation") , "#FAEDCA" , like(value,"Mailbox Search"),"#C1DBB3" , like(value,"Mailbox Search"),"#7EBC89" , like(value,"Mailbox Import Export"),"#E94F37")</colorPalette>
+        </format>
+      </table>
+      <chart>
+        <title>msExch* object class ACLs Editions</title>
+        <search>
+          <query>index=$ad_index$ host=$domain_host$ sourcetype=adtimeline (ObjectClass=msExch* AND pszAttributeName=nTSecurityDescriptor AND dwVersion &gt;= 2 )  | bucket span=1week _time | stats count by _time ObjectClass | where ObjectClass != "msExchRoleAssignment" OR (ObjectClass="msExchRoleAssignment" AND count &lt; 50) | xyseries _time,ObjectClass,count</query>
+          <earliest>0</earliest>
+          <latest></latest>
+        </search>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.drilldown">all</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>MsExchangeSecurityGroups</title>
+      <html>
+      <p style="text-align:right;">
+          MITRE | ATT&amp;CK <a href="https://attack.mitre.org/techniques/T1098/" target="_blank">T1098</a>
+        </p>
+      </html>
+      <table>
+        <title>Timeline, MsExchangeSecurityGroups:</title>
+        <search>
+          <query>index=$ad_index$ host=$domain_host$ sourcetype=adtimeline (pszAttributeName = member AND dwVersion != 0) OR (pszAttributeName = whenCreated) [search index=$ad_index$ host=$domain_host$ sourcetype=adobjects ObjectClass = "group" OU="Microsoft Exchange Security Groups" | table DN] | table _time, DN, pszAttributeName, Member, dwVersion, ftimeCreated, ftimeDeleted | sort -_time</query>
+          <earliest>0</earliest>
+          <latest></latest>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">cell</option>
+        <option name="refresh.display">progressbar</option>
+        <format type="color" field="dwVersion">
+          <colorPalette type="minMidMax" maxColor="#006D9C" minColor="#FFFFFF"></colorPalette>
+          <scale type="minMidMax"></scale>
+        </format>
+        <format type="color" field="DN">
+          <colorPalette type="sharedList"></colorPalette>
+          <scale type="sharedCategory"></scale>
+        </format>
+        <format type="color" field="Member">
+          <colorPalette type="sharedList"></colorPalette>
+          <scale type="sharedCategory"></scale>
+        </format>
+      </table>
+      <table>
+        <title>Exchange security groups members:</title>
+        <search>
+          <query>index=$ad_index$ host=$domain_host$ sourcetype=adobjects  OU="Microsoft Exchange Security Groups" Members=* | rex field=Members mode=sed "s/&lt;S&gt;|&lt;\/S&gt;|          //g" | table whenCreated, Name, Members | sort -whenCreated</query>
+          <earliest>0</earliest>
+          <latest></latest>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">cell</option>
+        <option name="refresh.display">progressbar</option>
+        <format type="color" field="Name">
+          <colorPalette type="expression">case (match(value,"Organization Management"), "#FE5D26" , like(value,"Exchange Servers"), "#F2C078" , like(value,"Hygiene Management") , "#FAEDCA" , like(value,"Exchange Windows Permissions"),"#C1DBB3" , like(value,"Exchange Trusted Subsystem"),"#7EBC89" , like(value,"Server Management"),"#685044")</colorPalette>
+        </format>
+                <format type="color" field="Members">
+          <colorPalette type="expression">case (match(value,"Organization Management"), "#FE5D26" , like(value,"Exchange Servers"), "#F2C078" , like(value,"Hygiene Management") , "#FAEDCA" , like(value,"Exchange Windows Permissions"),"#C1DBB3" , like(value,"Exchange Trusted Subsystem"),"#7EBC89" , like(value,"Server Management"),"#685044")</colorPalette>
+        </format>
+      </table>
+          </panel>
+  </row>
+<row>
+    <panel>
+      <title>Phishing</title>
+            <html>
+      <p style="text-align:right;">
+          MITRE | ATT&amp;CK <a href="https://attack.mitre.org/techniques/T1566/" target="_blank">T1566</a>
+        </p>
+      </html>
+       <table>
+        <title>Transport Rules: track malicious disclaimer</title>
+        <search>
+          <query>index=$ad_index$  host=$domain_host$ sourcetype=adobjects [search index=$ad_index$  host=$domain_host$ sourcetype=adtimeline (ObjectClass=msExchTransportRule AND  pszAttributeName=msExchTransportRuleXml) | table DN]| xpath outfield=WhenModified "//DT[@N='Modified']" | xpath outfield=whenCreated "//DT[@N='whenCreated']" | xpath outfield=transportRule "//S[@N='msExchTransportRuleXml']" | rex field=transportRule mode=sed "s/_x000D_|_x000A_|_x0009_//g" | xpath outfield=isActive field=transportRule "//@enabled" | xpath outfield=Recipient_address field=transportRule "//fork/recipient/@address" |xpath outfield=Action field=transportRule "//action/@name" |xpath outfield=Action_Detail field=transportRule "//action/@externalName" |xpath outfield=Action_Args field=transportRule "//argument/@*" | xpath outfield=Condition field=transportRule "//condition" | xpath outfield=Exception field=transportRule "//fork[@exception='true/]" |xpath outfield=Comments field=transportRule "//rule/@comments" |eval isActive=if(isnull(isActive),"true",isActive) | search Action IN (ApplyHtmlDisclaimer) |table WhenModified, whenCreated, Name, isActive, Action, Action_Args,Condition, Exception, Comments |sort -WhenModified
+          </query>
+          <earliest>0</earliest>
+          <latest></latest>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">cell</option>
+        <option name="refresh.display">progressbar</option>
+        <format type="color" field="Action_Args">
+          <colorPalette type="sharedList"></colorPalette>
+          <scale type="sharedCategory"></scale>
+        </format>
+      </table>
+      <table>
+        <title>Transport Rules: track SCL modifications</title>
+        <search>
+          <query>index=$ad_index$  host=$domain_host$ sourcetype=adobjects [search index=$ad_index$  host=$domain_host$ sourcetype=adtimeline (ObjectClass=msExchTransportRule AND  pszAttributeName=msExchTransportRuleXml) | table DN]| xpath outfield=WhenModified "//DT[@N='Modified']" | xpath outfield=whenCreated "//DT[@N='whenCreated']" | xpath outfield=transportRule "//S[@N='msExchTransportRuleXml']" | rex field=transportRule mode=sed "s/_x000D_|_x000A_|_x0009_//g" | xpath outfield=isActive field=transportRule "//@enabled" | xpath outfield=Recipient_address field=transportRule "//fork/recipient/@address" |xpath outfield=Action field=transportRule "//action/@name" |xpath outfield=Action_Detail field=transportRule "//action/@externalName" |xpath outfield=Action_Args field=transportRule "//argument/@*" | xpath outfield=Condition field=transportRule "//condition" | xpath outfield=Exception field=transportRule "//fork[@exception='true/]" |xpath outfield=Comments field=transportRule "//rule/@comments" |eval isActive=if(isnull(isActive),"true",isActive) | search (Action_Detail IN (SetScl) OR Action_Args IN(*SCL*)) |table WhenModified, whenCreated, Name, isActive, Action, Action_Args,Condition, Exception, Comments |sort -WhenModified
+          </query>
+          <earliest>0</earliest>
+          <latest></latest>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">cell</option>
+        <option name="refresh.display">progressbar</option>
+        <format type="color" field="Action_Args">
+          <colorPalette type="sharedList"></colorPalette>
+          <scale type="sharedCategory"></scale>
+        </format>
+      </table>
+          <html>
+            <p style="vertical-align:bottom;text-align:right;font-style:italic;font-size:x-small">
+          2020 The MITRE Corporation. This work is reproduced and distributed with the permission of The MITRE Corporation.
+        </p>
+      </html>
+    </panel>
+  </row>
+</form>

@@ -1,4 +1,4 @@
-<dashboard>
+<dashboard version="1.1">
   <label>Getting started</label>
   <row>
     <panel>
@@ -32,6 +32,7 @@
 <ul>
 <li><a href="#intf">Investigate timeframe dashboard</a></li>   
 <li><a href="#tsad">Track suspicious activity dashboard</a></li>
+<li><a href="#tsexch">Track suspicious Exchange activity dashboard</a></li>
 </ul>
 </li> 
 <li><a href="#etth">Enhance your traditional event logs threat hunting with ADTimeline</a></li> 
@@ -223,6 +224,21 @@ The different panels are:
 <li><i>GPOs</i>: A table of GPOs modifications having an audit client side extension is displayed, an attacker could change the audit settings on the domain to perform malicious actions with stealth. Finally modifications which could result in a GPO processing malfunctioning are displayed, this includes <i>gPCFunctionalityVersion</i>, <i>gPCFileSysPath</i> or <i>versionNumber</i> attribute modification.</li>
 <li><i>DCshadow detection</i>: The <i>DCshadow</i> is an attack which allows an attacker to push modifications in Active Directory and bypass traditional alerting by installing a fake DC. It was first presented by Vincent Le Toux and Benjamin Delpy at the BlueHat IL 2018 conference. The first graph will try to detect the installation of the fake DC by analyzing <i>server</i> and <i>nTDSDSA ObjectClass</i>. The two following tables will try to detect replication metadata tampering by analyzing <i>usnOriginatingChange</i> and <i>usnLocalChange</i> values which should increment through the time.</li>
 <li><i>Schema and configuration partition suspicious modifications</i>: The first graph displays Active Directory attribute modifications related to the configuration and schema partitions which can lower the security of the domain, used as backdoor by an attacker or hide information to the security team. The second graph is relevant if you have Exchange on premises and track modifications in the configuration partition which can be a sign of mail exfiltration.</li>
+</ul>
+</p>
+<u><h2 id="tsexch">Track suspicious Exchange activity dashboard</h2></u>
+<p>This dashboard analyses your Exchange onprem Active Directory objects and highlights some modifications which can be a sign of a suspicious activity, the modifications spotted can also be legitimate and need a triage analysis.</p>
+<div class="images">
+          <img src="/static/app/SA-ADTimeline/images/tuto11.png"/>
+</div>
+<p>
+The different panels are:
+<ul>
+<li><i>Microsoft Exchange infrastructure:</i>: Exchange version and servers.</li>
+<li><i>Possible mail exfiltration</i>: Mail forwarders setup on mailboxes, transport rules, remote domains, maibox export requests, content searches...</li>
+<li><i>Persistence</i>: RBAC roles and ACL modifications on Exchange objects.</li>
+<li><i>MsExchangeSecurityGroups:</i>: Timeline and group membership of builtin Exchange security groups.</li>
+<li><i>Phishing:</i>:Modifications on transport rules related to SCL and disclaimer.</li>
 </ul>
 </p>
 <h1 id="etth">Enhance your traditional event logs threat hunting with ADTimeline</h1>

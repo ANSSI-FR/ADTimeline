@@ -1,27 +1,62 @@
-"Exchange","rangeUpper"
-"Exchange 2019 schema version","17000"
-"Exchange 2016 CU7-CU12 schema version","15332"
-"Exchange 2016 CU6 schema version","15330"
-"Exchange 2016 CU3-CU5 schema version","15326"
-"Exchange 2016 CU2 schema version","15325"
-"Exchange 2016 CU1 schema version","15323"
-"Exchange 2016 RTM schema version","15317"
-"Exchange 2013 CU7-CU22","15312"
-"Exchange 2013 CU6 schema version","15303"
-"Exchange 2013 CU5 schema version","15300"
-"Exchange 2013 SP1 schema version","15292"
-"Exchange 2013 CU3 schema version","15283"
-"Exchange 2013 CU2 schema version","15281"
-"Exchange 2013 CU1 schema version","15254"
-"Exchange 2013 RTM schema version","15137"
-"Exchange 2010 SP3 schema version","14734"
-"Exchange 2010 SP2 schema version","14732"
-"Exchange 2010 SP1 schema version","14726"
-"Exchange 2010 RTM schema version","14622"
-"Exchange 2007 SP3 schema version","14625"
-"Exchange 2007 SP2 schema version","14622"
-"Exchange 2007 SP1 schema version","11116"
-"Exchange 2007 RTM schema version","10637"
-"Exchange 2003 schema version","6870"
-"Exchange 2000 schema version","4406"
-"Exchange 2000 RTM schema version","4397"
+"Exchange","rangeUpper"
+
+"Exchange 2019 CU10-CU11 schema version","17003"
+
+"Exchange 2019 CU8-CU9 schema version","17002"
+
+"Exchange 2019 CU2-CU7 schema version","17001"
+
+"Exchange 2019 RTM-CU1 schema version","17000"
+
+"Exchange 2016 CU19-CU21 schema version","15333"
+
+"Exchange 2016 CU7-CU18 schema version","15332"
+
+"Exchange 2016 CU6 schema version","15330"
+
+"Exchange 2016 CU3-CU5 schema version","15326"
+
+"Exchange 2016 CU2 schema version","15325"
+
+"Exchange 2016 CU1 schema version","15323"
+
+"Exchange 2016 RTM schema version","15317"
+
+"Exchange 2013 CU7-CU23","15312"
+
+"Exchange 2013 CU6 schema version","15303"
+
+"Exchange 2013 CU5 schema version","15300"
+
+"Exchange 2013 SP1 schema version","15292"
+
+"Exchange 2013 CU3 schema version","15283"
+
+"Exchange 2013 CU2 schema version","15281"
+
+"Exchange 2013 CU1 schema version","15254"
+
+"Exchange 2013 RTM schema version","15137"
+
+"Exchange 2010 SP3 schema version","14734"
+
+"Exchange 2010 SP2 schema version","14732"
+
+"Exchange 2010 SP1 schema version","14726"
+
+"Exchange 2010 RTM schema version","14622"
+
+"Exchange 2007 SP3 schema version","14625"
+
+"Exchange 2007 SP2 schema version","14622"
+
+"Exchange 2007 SP1 schema version","11116"
+
+"Exchange 2007 RTM schema version","10637"
+
+"Exchange 2003 schema version","6870"
+
+"Exchange 2000 schema version","4406"
+
+"Exchange 2000 RTM schema version","4397"
+
