@@ -267,6 +267,18 @@ This dashboard analyses the Active Directory timeline and highlights some modifi
 - DCshadow detection: The DCshadow is an attack which allows an attacker to push modifications in Active Directory and bypass traditional alerting by installing a fake DC. It was first presented by Vincent Le Toux and Benjamin Delpy at the BlueHat IL 2018 conference. The first graph will try to detect the installation of the fake DC by analyzing server and nTDSDSA ObjectClass. The two following tables will try to detect replication metadata tampering by analyzing usnOriginatingChange and usnLocalChange values which should increment through the time.
 - Schema and configuration partition suspicious modifications: The first graph displays Active Directory attribute modifications related to the configuration and schema partitions which can lower the security of the domain, used as backdoor by an attacker or hide information to the security team. The second graph is relevant if you have Exchange on premises and track modifications in the configuration partition which can be a sign of mail exfiltration.
 
+### The track suspicious Exchange activity dashboard
+
+This dashboard analyses your Exchange onprem Active Directory objects and highlights some modifications which can be a sign of a suspicious activity, the modifications spotted can also be legitimate and need a triage analysis.
+
+ The different panels are:
+
+- Microsoft Exchange infrastructure: Exchange version and servers.
+- Possible mail exfiltration: Mail forwarders setup on mailboxes, transport rules, remote domains, maibox export requests, content searches...
+- Persistence: RBAC roles and ACL modifications on Exchange objects.
+- MsExchangeSecurityGroups: Timeline and group membership of builtin Exchange security groups.
+- Phishing:Modifications on transport rules related to SCL and disclaimer.
+
 ## Enhance your traditional event logs threat hunting with ADTimeline: <a name="threathuntevtx"></a>
 
 The *adobjects* sourcetype is a set of data which can be used to uncover suspicious activity by performing Active Directory educated queries on the Windows event logs. We assume the sourcetype used for event logs is called *winevent* and its *EventData* part has the correct field extraction applied, for example *EventID 4624* has among other fields *TargetUserName* and *TargetUserSid* extracted:
