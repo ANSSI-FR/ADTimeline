@@ -96,7 +96,7 @@
       <chart rejects="$show_html_kerberoast1$">
         <title>Ratio of kerberoastable accounts being privileged in the domain, SPN and adminCount attributes:</title>
         <search>
-          <query>index=$ad_index$ host=$domain_host$ sourcetype=adobjects   (ObjectClass = "user" OR ObjectClass = "inetOrgPerson")  AND  ( SPNs = "*" AND NOT Name=krbtgt) | eval SPN = replace(SPNs, "(&lt;(.|)S&gt;|[\\nr])" , "")  | fillnull value="notset" adminCount | stats count as "Admincount ratio for users with SPN" by adminCount</query>
+          <query>index=$ad_index$ host=$domain_host$ sourcetype=adobjects   (ObjectClass = "user" OR ObjectClass = "inetOrgPerson")  AND  ( SPNs = "*" AND NOT Name=krbtgt) | eval SPN = replace(SPNs, "(&lt;(.|)S&gt;|[\\n\r])" , "")  | fillnull value="notset" adminCount | stats count as "Admincount ratio for users with SPN" by adminCount</query>
           <earliest>$earliest$</earliest>
           <latest>$latest$</latest>
           <progress>
@@ -123,7 +123,7 @@
         <option name="trellis.size">medium</option>
         <option name="trellis.splitBy">Name</option>
         <drilldown>
-          <link target="_blank">search?q=index=$ad_index$%20host=$domain_host$%20sourcetype=adobjects%20%20%20(ObjectClass%20=%20%22user%22%20OR%20ObjectClass%20=%20%22inetOrgPerson%22)%20%20AND%20%20(%20SPNs%20=%20%22*%22%20AND%20NOT%20Name=krbtgt)%20%7C%20eval%20SPN%20=%20replace(SPNs,%20%22(%3C(.%7C)S%3E%7C%5B%5C%5Cnr%5D)%22%20,%20%22%22)%20%20%7C%20fillnull%20value=%22notset%22%20adminCount%20%7C%20%20search%20$click.name$%20=%20%22$click.value$%22&amp;earliest=$earliest$&amp;latest=$latest$</link>
+          <link target="_blank">search?q=index=$ad_index$%20host=$domain_host$%20sourcetype=adobjects%20%20%20(ObjectClass%20=%20%22user%22%20OR%20ObjectClass%20=%20%22inetOrgPerson%22)%20%20AND%20%20(%20SPNs%20=%20%22*%22%20AND%20NOT%20Name=krbtgt)%20%7C%20eval%20SPN%20=%20replace(SPNs,%20%22(%3C(.%7C)S%3E%7C%5B%5C%5Cn%5C%5Cr%5D)%22%20,%20%22%22)%20%20%7C%20fillnull%20value=%22notset%22%20adminCount%20%7C%20%20search%20$click.name$%20=%20%22$click.value$%22&amp;earliest=$earliest$&amp;latest=$latest$</link>
         </drilldown>
       </chart>
       <html depends="$show_html_kerberoast1$">
@@ -140,7 +140,7 @@
               <unset token="show_html_kerberoast2"></unset>
             </condition>
           </progress>
-          <query>index=$ad_index$ host=$domain_host$ sourcetype=adobjects  (ObjectClass = "user" OR ObjectClass = "inetOrgPerson") AND (SPNs = "*" AND NOT Name= "krbtgt") | eval SPN = replace(SPNs, "(&lt;(.|)S&gt;|[\\nr])" , "") | fillnull value="notset" adminCount | eval Status = if((userAccountControl%4)&gt;=2,"disabled","enabled")  | eval lastlogon_timestamp = strftime(lastLogonTimestamp/10000000 - 11644473600, "%Y-%m-%dT%H:%M:%S") | table DN, SPN, Status, adminCount, SID, lastlogon_timestamp, whenCreated | sort -lastlogon_timestamp</query>
+          <query>index=$ad_index$ host=$domain_host$ sourcetype=adobjects  (ObjectClass = "user" OR ObjectClass = "inetOrgPerson") AND (SPNs = "*" AND NOT Name= "krbtgt") | eval SPN = replace(SPNs, "(&lt;(.|)S&gt;|[\\n\r])" , "") | fillnull value="notset" adminCount | eval Status = if((userAccountControl%4)&gt;=2,"disabled","enabled")  | eval lastlogon_timestamp = strftime(lastLogonTimestamp/10000000 - 11644473600, "%Y-%m-%dT%H:%M:%S") | table DN, SPN, Status, adminCount, SID, lastlogon_timestamp, whenCreated | sort -lastlogon_timestamp</query>
           <earliest>0</earliest>
           <latest></latest>
         </search>
@@ -153,7 +153,7 @@
           <colorPalette type="map">{"enabled":#A1D379,"disabled":#F8BE34}</colorPalette>
         </format>
         <drilldown>
-          <link target="_blank">search?q=index=$ad_index$%20host=$domain_host$%20sourcetype=adobjects%20%20(ObjectClass%20=%20%22user%22%20OR%20ObjectClass%20=%20%22inetOrgPerson%22)%20AND%20(SPNs%20=%20%22*%22%20AND%20NOT%20Name=%20%22krbtgt%22)%20%7C%20eval%20SPN%20=%20replace(SPNs,%20%22(%3C(.%7C)S%3E%7C%5B%5C%5Cnr%5D)%22%20,%20%22%22)%20%7C%20fillnull%20value=%22notset%22%20adminCount%20%7C%20eval%20Status%20=%20if((userAccountControl%254)%3E=2,%22disabled%22,%22enabled%22)%20%20%7C%20eval%20lastlogon_timestamp%20=%20strftime(lastLogonTimestamp/10000000%20-%2011644473600,%20%22%25Y-%25m-%25dT%25H:%25M:%25S%22)%20%7C%20search%20$click.name2$%20=%20%22$click.value2$%22&amp;earliest=0&amp;latest=</link>
+          <link target="_blank">search?q=index=$ad_index$%20host=$domain_host$%20sourcetype=adobjects%20%20(ObjectClass%20=%20%22user%22%20OR%20ObjectClass%20=%20%22inetOrgPerson%22)%20AND%20(SPNs%20=%20%22*%22%20AND%20NOT%20Name=%20%22krbtgt%22)%20%7C%20eval%20SPN%20=%20replace(SPNs,%20%22(%3C(.%7C)S%3E%7C%5B%5C%5Cn%5C%5Cr%5D)%22%20,%20%22%22)%20%7C%20fillnull%20value=%22notset%22%20adminCount%20%7C%20eval%20Status%20=%20if((userAccountControl%254)%3E=2,%22disabled%22,%22enabled%22)%20%20%7C%20eval%20lastlogon_timestamp%20=%20strftime(lastLogonTimestamp/10000000%20-%2011644473600,%20%22%25Y-%25m-%25dT%25H:%25M:%25S%22)%20%7C%20search%20$click.name2$%20=%20%22$click.value2$%22&amp;earliest=0&amp;latest=</link>
         </drilldown>
       </table>
       <html depends="$show_html_kerberoast2$">
@@ -438,7 +438,7 @@
         <search>
           <query>index=$ad_index$ host=$domain_host$  sourcetype=adobjects  (ObjectClass = "user" OR ObjectClass = "inetOrgPerson" OR ObjectClass = "Computer") | eval eval_cdeleg_bit = floor(userAccountControl / pow(2, 24)) %2 | search eval_cdeleg_bit=1 | eval eval_rodc_bit = floor(userAccountControl / pow(2, 26)) %2 
 | search eval_rodc_bit = 0 
-|  rex "(?ms)msDS-AllowedToDelegateTo.{1,100}&lt;LST&gt;(?&lt;AllowedToDelegateTotmp&gt;.*?)&lt;/LST&gt;" | eval AllowedToDelegateTo= replace(AllowedToDelegateTotmp, "(&lt;(.|)S&gt;|[\\nr])" , "") | eval Status = if((userAccountControl%4)&gt;=2,"disabled","enabled")  |   eval lastlogon_timestamp = strftime(lastLogonTimestamp/10000000 - 11644473600, "%Y-%m-%dT%H:%M:%S") | table  DN, ObjectClass, AllowedToDelegateTo, Status, lastlogon_timestamp, whenCreated</query>
+|  rex "(?ms)msDS-AllowedToDelegateTo.{1,100}&lt;LST&gt;(?&lt;AllowedToDelegateTotmp&gt;.*?)&lt;/LST&gt;" | eval AllowedToDelegateTo= replace(AllowedToDelegateTotmp, "(&lt;(.|)S&gt;|[\\n\r])" , "") | eval Status = if((userAccountControl%4)&gt;=2,"disabled","enabled")  |   eval lastlogon_timestamp = strftime(lastLogonTimestamp/10000000 - 11644473600, "%Y-%m-%dT%H:%M:%S") | table  DN, ObjectClass, AllowedToDelegateTo, Status, lastlogon_timestamp, whenCreated</query>
           <earliest>0</earliest>
           <latest></latest>
           <progress>
@@ -456,7 +456,7 @@
           <colorPalette type="map">{"enabled":#A1D379,"disabled":#F8BE34}</colorPalette>
         </format>
         <drilldown>
-          <link target="_blank">search?q=index=$ad_index$%20host=$domain_host$%20%20sourcetype=adobjects%20%20(ObjectClass%20=%20%22user%22%20OR%20ObjectClass%20=%20%22inetOrgPerson%22%20OR%20ObjectClass%20=%20%22Computer%22)%20%7C%20eval%20eval_cdeleg_bit%20=%20floor(userAccountControl%20/%20pow(2,%2024))%20%252%20%7C%20search%20eval_cdeleg_bit=1%20%7C%20eval%20eval_rodc_bit%20=%20floor(userAccountControl%20/%20pow(2,%2026))%20%252%20%0A%7C%20search%20eval_rodc_bit%20=%200%20%0A%7C%20%20rex%20%22(%3Fms)msDS-AllowedToDelegateTo.%7B1,100%7D%3CLST%3E(%3F%3CAllowedToDelegateTotmp%3E.%2A%3F)%3C/LST%3E%22%20%7C%20eval%20AllowedToDelegateTo=%20replace(AllowedToDelegateTotmp,%20%22(%3C(.%7C)S%3E%7C%5B%5C%5Cnr%5D)%22%20,%20%22%22)%20%7C%20eval%20Status%20=%20if((userAccountControl%254)%3E=2,%22disabled%22,%22enabled%22)%20%20%7C%20%20%20eval%20lastlogon_timestamp%20=%20strftime(lastLogonTimestamp/10000000%20-%2011644473600,%20%22%25Y-%25m-%25dT%25H:%25M:%25S%22)%20%7C%20search%20$click.name2$%20=%20%22$click.value2$%22&amp;earliest=0&amp;latest=</link>
+          <link target="_blank">search?q=index=$ad_index$%20host=$domain_host$%20%20sourcetype=adobjects%20%20(ObjectClass%20=%20%22user%22%20OR%20ObjectClass%20=%20%22inetOrgPerson%22%20OR%20ObjectClass%20=%20%22Computer%22)%20%7C%20eval%20eval_cdeleg_bit%20=%20floor(userAccountControl%20/%20pow(2,%2024))%20%252%20%7C%20search%20eval_cdeleg_bit=1%20%7C%20eval%20eval_rodc_bit%20=%20floor(userAccountControl%20/%20pow(2,%2026))%20%252%20%0A%7C%20search%20eval_rodc_bit%20=%200%20%0A%7C%20%20rex%20%22(%3Fms)msDS-AllowedToDelegateTo.%7B1,100%7D%3CLST%3E(%3F%3CAllowedToDelegateTotmp%3E.%2A%3F)%3C/LST%3E%22%20%7C%20eval%20AllowedToDelegateTo=%20replace(AllowedToDelegateTotmp,%20%22(%3C(.%7C)S%3E%7C%5B%5C%5Cn%5C%5Cr%5D)%22%20,%20%22%22)%20%7C%20eval%20Status%20=%20if((userAccountControl%254)%3E=2,%22disabled%22,%22enabled%22)%20%20%7C%20%20%20eval%20lastlogon_timestamp%20=%20strftime(lastLogonTimestamp/10000000%20-%2011644473600,%20%22%25Y-%25m-%25dT%25H:%25M:%25S%22)%20%7C%20search%20$click.name2$%20=%20%22$click.value2$%22&amp;earliest=0&amp;latest=</link>
         </drilldown>
       </table>
       <html depends="$show_html_deleg3$">
