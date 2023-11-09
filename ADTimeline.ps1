@@ -2426,6 +2426,7 @@ catch {
 			return $true
 		}
 		catch {
+			"$(Get-TimeStamp) Discarding unserializable object $($_.DistinguishedName)" | out-file $logfilename -append
 			return $null
 		}
 	}
@@ -2461,6 +2462,7 @@ if($gcobjects)
 				return $true
 			}
 			catch {
+				"$(Get-TimeStamp) Discarding unserializable object $($_.distinguishedname)" | out-file $logfilename -append
 				return $null
 			}
 		}
