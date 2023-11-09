@@ -2411,13 +2411,27 @@ write-output -inputobject "---- Exporting objects as XML ----"
 #Removing objects collected twice or more
 $criticalobjects = $criticalobjects | sort-object -unique -Property DistinguishedName
 "$(Get-TimeStamp) Removed LDAP objects collected twice or more" | out-file $logfilename -append
-# Exporting objects
-$criticalobjects | export-cliXML $adobjectsfilename -Encoding UTF8
-"$(Get-TimeStamp) Objects retrieved via LDAP exported in ADobjects.xml" | out-file $logfilename -append
-if($error)
-    { "$(Get-TimeStamp) Error while exporting objects retrieved via LDAP $($error)" | out-file $logfilename -append ; $error.clear() }
-
-
+# Exporting objects, first try
+try {
+	$criticalobjects | Export-Clixml $adobjectsfilename -Encoding UTF8
+	"$(Get-TimeStamp) All objects retrieved via LDAP exported in ADobjects.xml" | out-file $logfilename -append
+}
+catch {
+	# Exporting objects, second try
+	"$(Get-TimeStamp) Error while exporting some bjects retrieved via LDAP $($error)" | out-file $logfilename -append
+	"$(Get-TimeStamp) Retrying by filtering out invalid objects ..." | out-file $logfilename -append
+	$newcriticalobjects = $criticalobjects | Where-Object { 
+		try {
+			[System.Management.Automation.PSSerializer]::Serialize($_) | Out-Null
+			return $true
+		}
+		catch {
+			return $null
+		}
+	}
+	$newcriticalobjects | Export-Clixml -Force $adobjectsfilename -Encoding UTF8
+	"$(Get-TimeStamp) $($newcriticalobjects.Count)/$($criticalobject.Count) objects retrieved via LDAP exported in ADobjects.xml" | out-file $logfilename -append
+}
 
 $nbviaLDAP = $null
 $nbviagc = $null
