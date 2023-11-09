@@ -2442,10 +2442,6 @@ if($gcobjects)
 	{
 	$gcobjects = $gcobjects | sort-object -unique -Property DistinguishedName
 	"$(Get-TimeStamp) Removed GC objects collected twice or more" | out-file $logfilename -append
-	$gcobjects | export-cliXML $gcADobjectsfilename -Encoding UTF8
-	"$(Get-TimeStamp) Global Catalog objects exported in gcADobjects.xml" | out-file $logfilename -append
-	if($error)
-		{ "$(Get-TimeStamp) Error while exporting global catalog objects $($error)" | out-file $logfilename -append ; $error.clear() }
 
 	# Exporting gcobjects, first try
 	try {
