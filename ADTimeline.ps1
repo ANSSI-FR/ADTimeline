@@ -2418,7 +2418,7 @@ try {
 }
 catch {
 	# Exporting objects, second try
-	"$(Get-TimeStamp) Error while exporting some bjects retrieved via LDAP $($error)" | out-file $logfilename -append
+	"$(Get-TimeStamp) Error while exporting some objects retrieved via LDAP $($error)" | out-file $logfilename -append
 	"$(Get-TimeStamp) Retrying by filtering out invalid objects ..." | out-file $logfilename -append
 	$newcriticalobjects = $criticalobjects | Where-Object { 
 		try {
@@ -2431,6 +2431,8 @@ catch {
 	}
 	$newcriticalobjects | Export-Clixml -Force $adobjectsfilename -Encoding UTF8
 	"$(Get-TimeStamp) $($newcriticalobjects.Count)/$($criticalobject.Count) objects retrieved via LDAP exported in ADobjects.xml" | out-file $logfilename -append
+	if($error)
+		{ "$(Get-TimeStamp) Error while exporting objects $($error)" | out-file $logfilename -append ; $error.clear() }
 }
 
 $nbviaLDAP = $null
@@ -2443,6 +2445,30 @@ if($gcobjects)
 	"$(Get-TimeStamp) Global Catalog objects exported in gcADobjects.xml" | out-file $logfilename -append
 	if($error)
 		{ "$(Get-TimeStamp) Error while exporting global catalog objects $($error)" | out-file $logfilename -append ; $error.clear() }
+
+	# Exporting gcobjects, first try
+	try {
+		$gcobjects | Export-Clixml $gcADobjectsfilename -Encoding UTF8
+		"$(Get-TimeStamp) Global Catalog objects exported in gcADobjects.xml" | out-file $logfilename -append
+	}
+	catch {
+		# Exporting gcobjects, second try
+		"$(Get-TimeStamp) Error while exporting some Global Catalog objects retrieved via LDAP $($error)" | out-file $logfilename -append
+		"$(Get-TimeStamp) Retrying by filtering out invalid Global Catalog objects ..." | out-file $logfilename -append
+		$newgcobjects = $gcobjects | Where-Object { 
+			try {
+				[System.Management.Automation.PSSerializer]::Serialize($_) | Out-Null
+				return $true
+			}
+			catch {
+				return $null
+			}
+		}
+		$newgcobjects | Export-Clixml -Force $gcADobjectsfilename -Encoding UTF8
+		"$(Get-TimeStamp) $($newgcobjects.Count)/$($gcobjects.Count) Global Catalog objects retrieved via LDAP exported in gcADobjects.xml" | out-file $logfilename -append
+		if($error)
+			{ "$(Get-TimeStamp) Error while exporting global catalog objects $($error)" | out-file $logfilename -append ; $error.clear() }
+	}
 
 	$nbviaLDAP = ($criticalobjects | measure-object).count
 	$nbviagc = ($gcobjects | measure-object).count
