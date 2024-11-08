@@ -1,6 +1,6 @@
 
 # Application-level permissions
 []
-access = read : [ user ], write : [ admin, power ]
+access = read : [ user ], write : [ admin, power, sc_admin ]
 export = system
 owner = nobody
