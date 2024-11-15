@@ -1,0 +1,35 @@
+name: Build Splunk App
+
+on:
+  push:
+    branches:
+      - 'master'
+
+jobs:
+  build_splunk_app:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Change permissions of folders
+        run: find $GITHUB_WORKSPACE/SA-ADTimeline -type d -exec chmod 700 {} +
+
+      - name: Change permissions of files
+        run: find $GITHUB_WORKSPACE/SA-ADTimeline -type f -exec chmod 600 {} +
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.7'
+
+      - name: Install Splunk Packaging Toolkit
+        run: pip install 'https://download.splunk.com/misc/packaging-toolkit/splunk-packaging-toolkit-1.0.1.tar.gz'
+
+      - name: SLIM Package App
+        run: slim package $GITHUB_WORKSPACE/SA-ADTimeline
+        
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: "SA-ADTimeline_${{github.sha}}"
+          path: SA-ADTimeline*.gz
