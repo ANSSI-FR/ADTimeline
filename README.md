@@ -75,7 +75,7 @@ Objects considered of interest retrieved by the script include:
 
 In online mode no argument is mandatory and the closest global catalog is used for processing. If no global catalog is found run the script with the server argument :
 ```DOS
-PS> .\AD-timeline.ps1 -server <GLOBAL CATALOG FQDN>
+PS> .\ADTimeline.ps1 -server <GLOBAL CATALOG FQDN>
 ```
 In offline mode: Replay if necessary transaction logs of the NTDS database, mount it on your analysis machine (ADLDS + RSAT-AD-Tools installed) and use 3266 as LDAP port.
 ```DOS
@@ -85,7 +85,7 @@ If necessary use the allowupgrade switch.
 
 Launch the script targetting localhost on port 3266:
 ```DOS
-PS> .\AD-timeline.ps1 -server "127.0.0.1:3266"
+PS> .\ADTimeline.ps1 -server "127.0.0.1:3266"
 ```
 
 If you encounter performance issues when running against a large MSExchange organization with forwarders massively used, use the nofwdSMTP parameter:
