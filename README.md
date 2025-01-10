@@ -69,7 +69,11 @@ Objects considered of interest retrieved by the script include:
 - The account launching the script should be able to read objects in the tombstone (Deleted Objects Container) and some parts of the Exchange settings located in the configuration partition (View-Only Organization management). Delegation can be tricky to setup (especially for reading the tombstone). That is why we advise you to run the script with a domain admin account. If you launch the script as a standard user, it will process the timeline without the objects mentioned.
 - Computer should run Windows NT 6.1 or later with PowerShell 2.0 or later and have the Active Directory Powershell module installed (part of RSAT-AD-Tools).
 - If you enabled PowerShell Constrained Language Mode the script might fail (calling $error.clear()). Consider whitelisting the script via your device guard policy.
-- If you are using offline mode install the ADLDS role on a Windows Server edition in order to use dsamain.exe and mount the NTDS database. The version of the Windows Server you install the role on should be the same as the version of the Windows Server which the ntds.dit came from. If you do not know that version and you have the SOFTWARE hive available, you can look at the CurrentVersion key.
+- If you are using offline mode install the ADLDS role on a Windows Server edition in order to use dsamain.exe and mount the NTDS database.
+
+    The version of the Windows Server you install the role on should be the same as the version of the Windows Server which the ntds.dit came from. If you do not know that version and you have the SOFTWARE hive available, you can look at the CurrentVersion key.
+    
+    If you can not mount the ntds.dit file with dsamain.exe, this might be because the NTDS dump is corrupted. In that case, you can follow [advice from cert-cwatch](https://github.com/ANSSI-FR/ADTimeline/issues/17#issuecomment-1984049537).
 
 ## Usage: <a name="usage"></a>
 
