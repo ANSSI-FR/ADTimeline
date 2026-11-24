@@ -135,6 +135,14 @@ function Get-TimeStamp
     }
 
 "$(Get-TimeStamp) Starting script on $($server)" | out-file logfile.log
+"$(Get-TimeStamp) Script running as: $(whoami)" | out-file logfile.log -append
+$elevated = [bool]((whoami /groups) -match "S-1-16-12288")
+"$(Get-TimeStamp) PowerShell elevated: $($elevated)" | out-file logfile.log -append
+if(-not $elevated)
+	{
+	write-output -inputobject "WARNING: PowerShell is not elevated, some objects (DNS zones, KDS root keys, DPAPI secrets, msDS-KeyCredentialLink) might not be readable even with a domain admin account"
+	"$(Get-TimeStamp) WARNING: PowerShell is not elevated, some objects (DNS zones, KDS root keys, DPAPI secrets, msDS-KeyCredentialLink) might not be readable even with a domain admin account" | out-file logfile.log -append
+	}
 
 if($isonline -eq $true)
 	{
@@ -1014,6 +1022,173 @@ else
 	}
 
 
+#Objects with key credentials configured (msDS-KeyCredentialLink attribute, used by Windows Hello For Business, sensitive to the Shadow Credentials attack)
+$keycredentials = Get-ADObject -filter {((ObjectClass -eq "user") -or (ObjectClass -eq "inetOrgPerson") -or (ObjectClass -eq "Computer")) -and (msDS-KeyCredentialLink -like "*")} -Server $server -properties *
+if(($error -like '*timeout*') -or ($error -like '*invalid enumeration context*'))
+	{
+	$i = 1
+	while((($error -like '*timeout*') -or ($error -like '*invalid enumeration context*')) -and ($i -le 5))
+		{
+		$resultspagesize = 256 - $i * 40
+		write-output -inputobject "LDAP time out, trying again with ResultPageSize $($resultspagesize)"
+		$error.clear()
+		$keycredentials = Get-ADObject -ResultPageSize $resultspagesize -filter {((ObjectClass -eq "user") -or (ObjectClass -eq "inetOrgPerson") -or (ObjectClass -eq "Computer")) -and (msDS-KeyCredentialLink -like "*")} -Server $server -properties *
+		$i++
+		}
+	if($keycredentials){write-output -inputobject "LDAP query succeeded with different ResultPageSize"}
+	else{write-output -inputobject "LDAP query failure despite different ResultPageSize, resuming script"}
+	}
+$countkeycredentials = ($keycredentials | measure-object).count
+$criticalobjects += $keycredentials
+if($error)
+    { "$(Get-TimeStamp) Error while retrieving objects with key credentials configured $($error)" | out-file $logfilename -append ; $error.clear() }
+else
+	{
+	"$(Get-TimeStamp) Number of user and computer objects with key credentials configured (msDS-KeyCredentialLink): $($countkeycredentials)" | out-file $logfilename -append
+	}
+
+
+#Shadow principals (msDS-ShadowPrincipal objects located in the configuration partition, a msDS-ShadowPrincipalSid attribute can map a SID from a trusted forest, members get the equivalent privileges, can be used as a persistence mechanism)
+$shadowprincipals = Get-ADObject -searchbase $root.configurationNamingContext -SearchScope SubTree -Filter {ObjectClass -eq "msDS-ShadowPrincipal"} -Server $server -properties *
+if(($error -like '*timeout*') -or ($error -like '*invalid enumeration context*'))
+	{
+	$i = 1
+	while((($error -like '*timeout*') -or ($error -like '*invalid enumeration context*')) -and ($i -le 5))
+		{
+		$resultspagesize = 256 - $i * 40
+		write-output -inputobject "LDAP time out, trying again with ResultPageSize $($resultspagesize)"
+		$error.clear()
+		$shadowprincipals = Get-ADObject -ResultPageSize $resultspagesize -searchbase $root.configurationNamingContext -SearchScope SubTree -Filter {ObjectClass -eq "msDS-ShadowPrincipal"} -Server $server -properties *
+		$i++
+		}
+	if($shadowprincipals){write-output -inputobject "LDAP query succeeded with different ResultPageSize"}
+	else{write-output -inputobject "LDAP query failure despite different ResultPageSize, resuming script"}
+	}
+$countshadowprincipals = ($shadowprincipals | measure-object).count
+$criticalobjects += $shadowprincipals
+if($error)
+    { "$(Get-TimeStamp) Error while retrieving shadow principals in the configuration partition $($error)" | out-file $logfilename -append ; $error.clear() }
+else
+	{
+	"$(Get-TimeStamp) Number of shadow principals (msDS-ShadowPrincipal) in the configuration partition: $($countshadowprincipals)" | out-file $logfilename -append
+	}
+
+
+#Group and standalone Managed Service Accounts (gMSA and sMSA), the msDS-GroupMSAMembers attribute lists the principals allowed to retrieve the managed password, a non privileged principal in that list can be an escalation path
+$managedserviceaccounts = Get-ADObject -filter {((ObjectClass -eq "msDS-GroupManagedServiceAccount") -or (ObjectClass -eq "msDS-ManagedServiceAccount"))} -Server $server -properties *
+if(($error -like '*timeout*') -or ($error -like '*invalid enumeration context*'))
+	{
+	$i = 1
+	while((($error -like '*timeout*') -or ($error -like '*invalid enumeration context*')) -and ($i -le 5))
+		{
+		$resultspagesize = 256 - $i * 40
+		write-output -inputobject "LDAP time out, trying again with ResultPageSize $($resultspagesize)"
+		$error.clear()
+		$managedserviceaccounts = Get-ADObject -ResultPageSize $resultspagesize -filter {((ObjectClass -eq "msDS-GroupManagedServiceAccount") -or (ObjectClass -eq "msDS-ManagedServiceAccount"))} -Server $server -properties *
+		$i++
+		}
+	if($managedserviceaccounts){write-output -inputobject "LDAP query succeeded with different ResultPageSize"}
+	else{write-output -inputobject "LDAP query failure despite different ResultPageSize, resuming script"}
+	}
+$countmanagedserviceaccounts = ($managedserviceaccounts | measure-object).count
+$criticalobjects += $managedserviceaccounts
+if($error)
+    { "$(Get-TimeStamp) Error while retrieving managed service accounts $($error)" | out-file $logfilename -append ; $error.clear() }
+else
+	{
+	"$(Get-TimeStamp) Number of group and standalone managed service accounts (gMSA and sMSA): $($countmanagedserviceaccounts)" | out-file $logfilename -append
+	}
+
+
+#KDS root keys (objects under the Master Root Keys container in the configuration partition, the root key is used to derive the gMSA passwords, a rogue root key can be used to compute all the gMSA passwords offline: golden gMSA)
+$KDSroot = "CN=Master Root Keys,CN=Group Key Distribution Service,CN=Services," + $root.configurationNamingContext
+$KDSrootkeys = Get-ADObject -searchbase $KDSroot -SearchScope SubTree -Filter * -Server $server -properties *
+if(($error -like '*timeout*') -or ($error -like '*invalid enumeration context*'))
+	{
+	$i = 1
+	while((($error -like '*timeout*') -or ($error -like '*invalid enumeration context*')) -and ($i -le 5))
+		{
+		$resultspagesize = 256 - $i * 40
+		write-output -inputobject "LDAP time out, trying again with ResultPageSize $($resultspagesize)"
+		$error.clear()
+		$KDSrootkeys = Get-ADObject -ResultPageSize $resultspagesize -searchbase $KDSroot -SearchScope SubTree -Filter * -Server $server -properties *
+		$i++
+		}
+	if($KDSrootkeys){write-output -inputobject "LDAP query succeeded with different ResultPageSize"}
+	else{write-output -inputobject "LDAP query failure despite different ResultPageSize, resuming script"}
+	}
+#Keeping only the actual root keys (the SubTree query also returns the Master Root Keys container itself)
+$KDSrootkeys = $KDSrootkeys | where-object{$_.'msKds-CreateTime'}
+$countKDSrootkeys = ($KDSrootkeys | measure-object).count
+$criticalobjects += $KDSrootkeys
+if($error)
+    { "$(Get-TimeStamp) Error while retrieving KDS root keys in the configuration partition $($error)" | out-file $logfilename -append ; $error.clear() }
+else
+	{
+	"$(Get-TimeStamp) Number of KDS root keys in the configuration partition: $($countKDSrootkeys) - more than one root key or an immediate or recent effective time could be a golden gMSA setup by an attacker" | out-file $logfilename -append
+	}
+#Converting the KDS key creation and effective times to UTC and computing the delta between them (the effective time is normally ten hours after the creation time, an immediate or recent effective time could be a rogue key)
+foreach($KDSrootkey in $KDSrootkeys)
+	{
+	if($KDSrootkey.'msKds-CreateTime')
+		{
+		$KDSrootkey | add-member -MemberType NoteProperty -Name KDSCreateTimeUTC -Value ([DateTime]::FromFileTimeUtc($KDSrootkey.'msKds-CreateTime')).ToString("u") -force
+		}
+	if($KDSrootkey.whenCreated)
+		{
+		$KDSrootkey | add-member -MemberType NoteProperty -Name KDSWhenCreatedUTC -Value (get-date($KDSrootkey.whenCreated)).ToUniversalTime().ToString("u") -force
+		}
+	if($KDSrootkey.KDSCreateTimeUTC -and $KDSrootkey.KDSWhenCreatedUTC)
+		{
+		$KDSdelta = ((get-date($KDSrootkey.KDSCreateTimeUTC)) - (get-date($KDSrootkey.KDSWhenCreatedUTC))).TotalHours
+		$KDSrootkey | add-member -MemberType NoteProperty -Name KDSEffectiveDeltaHours -Value $KDSdelta.ToString("0.0") -force
+		}
+	}
+
+
+#Computers with a LAPS password expiration time configured (ms-Mcs-AdmPwdExpirationTime for legacy LAPS and msLAPS-PasswordExpirationTime for Windows LAPS), a rotation time pushed far in the future can be a sign of a frozen rotation setup by an attacker knowing the local administrator password
+#Those objects are exported in ADobjects.xml but not processed for replication metadata (state only collection, keeping the runtime low)
+#The LAPS attributes are looked up in the schema first, the query is skipped if the LAPS schema extension is not present in the forest otherwise the property validation would fail
+$lapsschema = Get-ADObject -SearchBase $root.schemaNamingContext -Filter {((Name -eq "ms-Mcs-AdmPwdExpirationTime") -or (Name -eq "msLAPS-PasswordExpirationTime"))} -Server $server
+if($error)
+	{ "$(Get-TimeStamp) Error while looking up the LAPS attributes in the schema $($error)" | out-file $logfilename -append ; $error.clear() }
+$lapsexpirationproperties = @()
+if($lapsschema | where-object{$_.Name -eq "ms-Mcs-AdmPwdExpirationTime"})
+	{$lapsexpirationproperties += "ms-Mcs-AdmPwdExpirationTime"}
+if($lapsschema | where-object{$_.Name -eq "msLAPS-PasswordExpirationTime"})
+	{$lapsexpirationproperties += "msLAPS-PasswordExpirationTime"}
+if($lapsexpirationproperties)
+	{
+	$lapsexpirationfilter = "(|" + (($lapsexpirationproperties | foreach-object{"($_=*)"}) -join "") + ")"
+	#The properties are flattened in a single array as the AD cmdlets do not accept a nested array in the Properties parameter
+	$LAPSqueryproperties = @('dNSHostName','operatingSystem','whenChanged','whenCreated') + $lapsexpirationproperties
+	$LAPSObjects = Get-ADObject -LDAPFilter "(&(objectClass=computer)$($lapsexpirationfilter))" -SearchBase $root.defaultNamingContext -SearchScope SubTree -Server $server -Properties $LAPSqueryproperties
+	if(($error -like '*timeout*') -or ($error -like '*invalid enumeration context*'))
+		{
+		$i = 1
+		while((($error -like '*timeout*') -or ($error -like '*invalid enumeration context*')) -and ($i -le 5))
+			{
+			$resultspagesize = 256 - $i * 40
+			write-output -inputobject "LDAP time out, trying again with ResultPageSize $($resultspagesize)"
+			$error.clear()
+			$LAPSObjects = Get-ADObject -ResultPageSize $resultspagesize -LDAPFilter "(&(objectClass=computer)$($lapsexpirationfilter))" -SearchBase $root.defaultNamingContext -SearchScope SubTree -Server $server -Properties $LAPSqueryproperties
+			$i++
+			}
+		if($LAPSObjects){write-output -inputobject "LDAP query succeeded with different ResultPageSize"}
+		else{write-output -inputobject "LDAP query failure despite different ResultPageSize, resuming script"}
+		}
+	$countLAPSObjects = ($LAPSObjects | measure-object).count
+	if($error)
+		{ "$(Get-TimeStamp) Error while retrieving computers with a LAPS password expiration time configured $($error)" | out-file $logfilename -append ; $error.clear() }
+	else
+		{
+		"$(Get-TimeStamp) Number of computers with a LAPS password expiration time configured: $($countLAPSObjects)" | out-file $logfilename -append
+		}
+	}
+else
+	{"$(Get-TimeStamp) LAPS schema extension not found in the forest, skipping the LAPS rotation collection" | out-file $logfilename -append}
+
+
 #Directory Service Information object
 $DSInfo = "CN=Directory Service,CN=Windows NT,CN=Services," + $root.configurationNamingContext
 $criticalobjects += Get-ADObject $DSInfo -Server $server -properties *
@@ -1027,11 +1202,55 @@ else
 
 #Getting all existing and deleted DNS Zones
 $DNSZones = $root.namingcontexts | where-object{$_ -like "*DnsZones,*"} | foreach-object{get-adobject -searchbase $_ -Filter {ObjectClass -eq 'DNSZone'} -includedeletedobjects -properties * -server $server}
+#Adding legacy DNS zones located in the domain naming context
+$legacyDNSZones = get-adobject -searchbase ("CN=MicrosoftDNS,CN=System," + $root.defaultNamingContext) -Filter {ObjectClass -eq 'DNSZone'} -includedeletedobjects -properties * -server $server
 $criticalobjects += $DNSZones
-$countDNSZones = ($DNSZones | measure-object).count
+if($legacyDNSZones){$criticalobjects += $legacyDNSZones}
+$countDNSZones = ($DNSZones | measure-object).count + ($legacyDNSZones | measure-object).count
 if($error)
     { "$(Get-TimeStamp) Error while retrieving DNS zones $($error)" | out-file $logfilename -append ; $error.clear() }
 else {"$(Get-TimeStamp) Number of existing and deleted DNS zones: $($countDNSZones)" | out-file $logfilename -append}
+
+
+#ADIDNS wildcard nodes (dnsNode objects named * in the DNS zones, can be added by an attacker to redirect all the unresolved hostnames to a malicious host: poisoning, coercion and relay attacks)
+#The literal asterisk is escaped as \2a in the LDAP filter and msDS-LastKnownRDN is searched as well to catch created then tombstoned wildcard nodes
+$ADIDNSwildcards = $DNSZones | where-object{-not $_.isDeleted} | foreach-object{get-adobject -searchbase $_.DistinguishedName -LDAPFilter '(|(cn=\2a)(dc=\2a)(msDS-LastKnownRDN=\2a))' -includedeletedobjects -properties * -server $server}
+if($ADIDNSwildcards)
+	{
+	$criticalobjects += $ADIDNSwildcards
+	#Parsing the dnsRecord attribute to extract the target of type A records (the IPv4 address is located in the last four bytes of the record)
+	foreach($ADIDNSwildcard in $ADIDNSwildcards)
+		{
+		$adidnstargets = @()
+		$dnsrecords = $ADIDNSwildcard.dnsRecord
+		if($dnsrecords -and ($dnsrecords[0] -isnot [System.Array]))
+			{$dnsrecords = ,$dnsrecords}
+		foreach($dnsrecord in $dnsrecords)
+			{
+			try{
+				if($dnsrecord -and ($dnsrecord.length -ge 24))
+					{
+					$dnsrectype = $dnsrecord[2] + ($dnsrecord[3] * 256)
+					if($dnsrectype -eq 1)
+						{$adidnstargets += ($dnsrecord[($dnsrecord.length - 4)..($dnsrecord.length - 1)] -join ".")}
+					elseif($dnsrectype -eq 0)
+						{$adidnstargets += "tombstoned/NULL record (type 0)"}
+					else
+						{$adidnstargets += ("non A record type " + $dnsrectype)}
+					}
+				else
+					{$adidnstargets += "non A or tombstoned dnsRecord"}
+				}
+			catch{$adidnstargets += "dnsRecord parsing error"}
+			}
+		if($adidnstargets){$ADIDNSwildcard | add-member -MemberType NoteProperty -Name ADIDNSTarget -Value ($adidnstargets -join ",") -force}
+		}
+	}
+$countADIDNSwildcards = ($ADIDNSwildcards | measure-object).count
+if($error)
+    { "$(Get-TimeStamp) Error while retrieving ADIDNS wildcard nodes in the DNS zones $($error)" | out-file $logfilename -append ; $error.clear() }
+else
+	{"$(Get-TimeStamp) Number of existing and deleted ADIDNS wildcard nodes in the DNS zones: $($countADIDNSwildcards)" | out-file $logfilename -append}
 
 
 #Group Policy Objects, trusts, DPAPI secrets, AdminSDHolder, domainPolicy, RIDManager under the System container, GPO WMI Filters
@@ -1375,6 +1594,58 @@ else {
 	"$(Get-TimeStamp) Number of AuthNPolicy or silos objects in the configuration partition: $($countAuthN)" | out-file $logfilename -append
 	$crossrefcontainer = $sitesIGC | where-object{($_.Name -eq "Partitions") -and ($_.ObjectClass -eq "crossRefContainer")}
 	$DomainNamingMaster = (((($crossrefcontainer.fsmoRoleOwner).replace($root.configurationNamingContext,"")).replace("CN=NTDS Settings,","")).replace("CN=Sis,","")).replace("CN=Sites,","CN=Sites")
+	}
+
+
+#ADCS certificate templates (pKICertificateTemplate objects in the configuration partition), the template flags, EKUs and ACL can expose exploitable configurations: ESC1, ESC2, ESC3, ESC4, ESC9 and ESC15
+$ADCStemplates = Get-ADObject -searchbase ("CN=Certificate Templates,CN=Public Key Services,CN=Services," + $root.configurationNamingContext) -SearchScope SubTree -Filter {ObjectClass -eq "pKICertificateTemplate"} -Server $server -properties *
+if(($error -like '*timeout*') -or ($error -like '*invalid enumeration context*'))
+	{
+	$i = 1
+	while((($error -like '*timeout*') -or ($error -like '*invalid enumeration context*')) -and ($i -le 5))
+		{
+		$resultspagesize = 256 - $i * 40
+		write-output -inputobject "LDAP time out, trying again with ResultPageSize $($resultspagesize)"
+		$error.clear()
+		$ADCStemplates = Get-ADObject -ResultPageSize $resultspagesize -searchbase ("CN=Certificate Templates,CN=Public Key Services,CN=Services," + $root.configurationNamingContext) -SearchScope SubTree -Filter {ObjectClass -eq "pKICertificateTemplate"} -Server $server -properties *
+		$i++
+		}
+	if($ADCStemplates){write-output -inputobject "LDAP query succeeded with different ResultPageSize"}
+	else{write-output -inputobject "LDAP query failure despite different ResultPageSize, resuming script"}
+	}
+$countADCStemplates = ($ADCStemplates | measure-object).count
+$criticalobjects += $ADCStemplates
+if($error)
+    { "$(Get-TimeStamp) Error while retrieving ADCS certificate templates in the configuration partition $($error)" | out-file $logfilename -append ; $error.clear() }
+else
+	{
+	"$(Get-TimeStamp) Number of ADCS certificate templates in the configuration partition: $($countADCStemplates)" | out-file $logfilename -append
+	}
+
+
+#ADCS OID group links (msDS-OID objects linked to a group with the msDS-OIDToGroupLink attribute in the configuration partition), a certificate issued with the linked policy grants the group membership: ESC13
+$ADCSOIDs = Get-ADObject -searchbase ("CN=OID,CN=Public Key Services,CN=Services," + $root.configurationNamingContext) -SearchScope SubTree -Filter {(ObjectClass -eq "msDS-OID") -and (msDS-OIDToGroupLink -like "*")} -Server $server -properties *
+if(($error -like '*timeout*') -or ($error -like '*invalid enumeration context*'))
+	{
+	$i = 1
+	while((($error -like '*timeout*') -or ($error -like '*invalid enumeration context*')) -and ($i -le 5))
+		{
+		$resultspagesize = 256 - $i * 40
+		write-output -inputobject "LDAP time out, trying again with ResultPageSize $($resultspagesize)"
+		$error.clear()
+		$ADCSOIDs = Get-ADObject -ResultPageSize $resultspagesize -searchbase ("CN=OID,CN=Public Key Services,CN=Services," + $root.configurationNamingContext) -SearchScope SubTree -Filter {(ObjectClass -eq "msDS-OID") -and (msDS-OIDToGroupLink -like "*")} -Server $server -properties *
+		$i++
+		}
+	if($ADCSOIDs){write-output -inputobject "LDAP query succeeded with different ResultPageSize"}
+	else{write-output -inputobject "LDAP query failure despite different ResultPageSize, resuming script"}
+	}
+$countADCSOIDs = ($ADCSOIDs | measure-object).count
+$criticalobjects += $ADCSOIDs
+if($error)
+    { "$(Get-TimeStamp) Error while retrieving ADCS OID group links in the configuration partition $($error)" | out-file $logfilename -append ; $error.clear() }
+else
+	{
+	"$(Get-TimeStamp) Number of ADCS OID group links in the configuration partition: $($countADCSOIDs)" | out-file $logfilename -append
 	}
 
 
@@ -2394,7 +2665,15 @@ if($Classesschema){Remove-variable Classesschema}
 if($dnsadmin){Remove-variable dnsadmin}
 if($dnsadminsmembers){Remove-variable dnsadminsmembers}
 if($delegkrb){Remove-variable delegkrb}
+if($keycredentials){Remove-variable keycredentials}
+if($shadowprincipals){Remove-variable shadowprincipals}
+if($managedserviceaccounts){Remove-variable managedserviceaccounts}
+if($KDSrootkeys){Remove-variable KDSrootkeys}
 if($DNSZones){Remove-variable DNSZones}
+if($legacyDNSZones){Remove-variable legacyDNSZones}
+if($ADIDNSwildcards){Remove-variable ADIDNSwildcards}
+if($ADCStemplates){Remove-variable ADCStemplates}
+if($ADCSOIDs){Remove-variable ADCSOIDs}
 if($objOUsfull){Remove-variable objOUsfull}
 if($extrights){Remove-variable extrights}
 if($confidattr){Remove-variable confidattr}
@@ -2427,16 +2706,25 @@ write-output -inputobject "---- Exporting objects as XML ----"
 #Removing objects collected twice or more
 $criticalobjects = $criticalobjects | sort-object -unique -Property DistinguishedName
 "$(Get-TimeStamp) Removed LDAP objects collected twice or more" | out-file $logfilename -append
+#Merging the LAPS objects (state only collection), they are exported but not processed for replication metadata
+if($LAPSObjects)
+	{
+	$LAPSObjects = $LAPSObjects | sort-object -unique -Property DistinguishedName
+	$exportcriticalobjects = $criticalobjects + $LAPSObjects
+	"$(Get-TimeStamp) Number of LAPS objects merged in ADobjects.xml: $(($LAPSObjects | measure-object).count)" | out-file $logfilename -append
+	}
+else
+	{$exportcriticalobjects = $criticalobjects}
 # Exporting objects, first try
 try {
-	$criticalobjects | Export-Clixml $adobjectsfilename -Encoding UTF8
+	$exportcriticalobjects | Export-Clixml $adobjectsfilename -Encoding UTF8
 	"$(Get-TimeStamp) All objects retrieved via LDAP exported in ADobjects.xml" | out-file $logfilename -append
 }
 catch {
 	# Exporting objects, second try
 	"$(Get-TimeStamp) Error while exporting some objects retrieved via LDAP $($error)" | out-file $logfilename -append
 	"$(Get-TimeStamp) Retrying by filtering out invalid objects ..." | out-file $logfilename -append
-	$newcriticalobjects = $criticalobjects | Where-Object { 
+	$newcriticalobjects = $exportcriticalobjects | Where-Object { 
 		try {
 			[System.Management.Automation.PSSerializer]::Serialize($_) | Out-Null
 			return $true
@@ -2447,10 +2735,11 @@ catch {
 		}
 	}
 	$newcriticalobjects | Export-Clixml -Force $adobjectsfilename -Encoding UTF8
-	"$(Get-TimeStamp) $($newcriticalobjects.Count)/$($criticalobject.Count) objects retrieved via LDAP exported in ADobjects.xml" | out-file $logfilename -append
+	"$(Get-TimeStamp) $($newcriticalobjects.Count)/$($exportcriticalobjects.Count) objects retrieved via LDAP exported in ADobjects.xml" | out-file $logfilename -append
 	if($error)
 		{ "$(Get-TimeStamp) Error while exporting objects $($error)" | out-file $logfilename -append ; $error.clear() }
 }
+if($LAPSObjects){Remove-variable LAPSObjects}
 
 $nbviaLDAP = $null
 $nbviagc = $null
@@ -2523,14 +2812,14 @@ foreach ($criticalobject in $criticalobjects)
 		$search = new-object System.DirectoryServices.DirectorySearcher
 		$search.searchroot = [ADSI]"GC://$($gc)"
 		$search.Tombstone = $true
-		$search.PropertiesToLoad.Addrange(('msDS-ReplAttributeMetadata','Name','DistinguishedName'))
+		$search.PropertiesToLoad.Addrange(('msDS-ReplAttributeMetadata','msDS-ReplValueMetadata','Name','DistinguishedName'))
 		$search.filter = "(DistinguishedName=$($criticalobject.DistinguishedName))"
 		$search.pagesize = 256
 		$obj = 	$search.FindAll()  | Convert-ADSearchResult
 
 		}
 	else
-		{$obj = get-adobject $criticalobject.DistinguishedName -Properties msDS-ReplAttributeMetadata -server $server -IncludeDeletedObjects}
+		{$obj = get-adobject $criticalobject.DistinguishedName -Properties msDS-ReplAttributeMetadata,msDS-ReplValueMetadata -server $server -IncludeDeletedObjects}
 
 	$metadas = $obj."msDS-ReplAttributeMetadata" | foreach-object{ ([xml] $_.Replace("`0","").Replace("&","&amp;")).DS_REPL_ATTR_META_DATA }
 
@@ -2570,6 +2859,38 @@ foreach ($criticalobject in $criticalobjects)
 		    if($error){ "$(Get-TimeStamp) Error while editing global AD replication metadata object $($error) for $($criticalobject.DistinguishedName)" | out-file $logfilename -append ; $error.clear() }
 		    }
         }
+
+	#Parsing the msDS-ReplValueMetadata for the linked attributes of the non group objects
+	#(linked attributes such as msDS-KeyCredentialLink hold their replication metadata at the value level,
+	# the groups are processed in the dedicated branch below)
+	if($criticalobject.ObjectCategory -ne $groupClass -and $obj."msDS-ReplValueMetadata")
+		{
+		$metadasval = $obj."msDS-ReplValueMetadata" | foreach-object{ ([xml] $_.Replace("`0","").Replace("&","&amp;")).DS_REPL_VALUE_META_DATA }
+		foreach($metada in $metadasval)
+			{
+			$tmpobj = new-object psobject
+		    add-member -InputObject $tmpobj -MemberType NoteProperty -Name ftimeLastOriginatingChange -Value $metada.ftimeLastOriginatingChange
+		    add-member -InputObject $tmpobj -MemberType NoteProperty -Name Name -Value $obj.Name
+		    add-member -InputObject $tmpobj -MemberType NoteProperty -Name pszAttributeName -Value $metada.pszAttributeName
+			add-member -InputObject $tmpobj -MemberType NoteProperty -Name ObjectClass -Value $criticalobject.ObjectClass
+			add-member -InputObject $tmpobj -MemberType NoteProperty -Name DN -Value $obj.DistinguishedName
+		    add-member -InputObject $tmpobj -MemberType NoteProperty -Name ObjectCategory -Value $criticalobject.ObjectCategory
+		    add-member -InputObject $tmpobj -MemberType NoteProperty -Name SamAccountName -Value $criticalobject.SamAccountName
+		    add-member -InputObject $tmpobj -MemberType NoteProperty -Name dwVersion -Value $metada.dwVersion
+		    add-member -InputObject $tmpobj -MemberType NoteProperty -Name WhenCreated -Value $whencreatedUTC
+		    add-member -InputObject $tmpobj -MemberType NoteProperty -Name Member -Value $metada.pszObjectDn
+		    add-member -InputObject $tmpobj -MemberType NoteProperty -Name ftimeCreated -Value $metada.ftimeCreated
+		    add-member -InputObject $tmpobj -MemberType NoteProperty -Name ftimeDeleted -Value $metada.ftimeDeleted
+		    add-member -InputObject $tmpobj -MemberType NoteProperty -Name SID -Value $criticalobject.objectSid
+			add-member -InputObject $tmpobj -MemberType NoteProperty -Name pszLastOriginatingDsaDN -Value $metada.pszLastOriginatingDsaDN
+	    	add-member -InputObject $tmpobj -MemberType NoteProperty -Name uuidLastOriginatingDsaInvocationID -Value $metada.uuidLastOriginatingDsaInvocationID
+	    	add-member -InputObject $tmpobj -MemberType NoteProperty -Name usnOriginatingChange -Value $metada.usnOriginatingChange
+	    	add-member -InputObject $tmpobj -MemberType NoteProperty -Name usnLocalChange -Value $metada.usnLocalChange
+	    	    # Append temp object to global AD replication metadata object
+	    	    [void]$Replinfo.add($tmpobj)
+		    if($error){ "$(Get-TimeStamp) Error while editing global AD replication metadata object $($error) for $($criticalobject.DistinguishedName)" | out-file $logfilename -append ; $error.clear() }
+		    }
+		}
 
 	if($criticalobject.ObjectCategory -eq $groupClass)
 		{
