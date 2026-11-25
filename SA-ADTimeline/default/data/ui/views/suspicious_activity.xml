@@ -839,7 +839,7 @@
   </row>
   <row>
     <panel>
-      <title>ADIDNS: wildcard dnsNode records in the DNS zones</title>
+      <title>ADIDNS: wildcard and wpad dnsNode records in the DNS zones</title>
       <table>
         <search>
           <query>index=$ad_index$ host=$domain_host$ sourcetype=adobjects ObjectClass=dnsNode | fillnull value="N/A" ADIDNSTarget | table DN, ADIDNSTarget, whenCreated</query>

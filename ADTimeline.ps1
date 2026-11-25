@@ -1212,9 +1212,10 @@ if($error)
 else {"$(Get-TimeStamp) Number of existing and deleted DNS zones: $($countDNSZones)" | out-file $logfilename -append}
 
 
-#ADIDNS wildcard nodes (dnsNode objects named * in the DNS zones, can be added by an attacker to redirect all the unresolved hostnames to a malicious host: poisoning, coercion and relay attacks)
-#The literal asterisk is escaped as \2a in the LDAP filter and msDS-LastKnownRDN is searched as well to catch created then tombstoned wildcard nodes
-$ADIDNSwildcards = $DNSZones | where-object{-not $_.isDeleted} | foreach-object{get-adobject -searchbase $_.DistinguishedName -LDAPFilter '(|(cn=\2a)(dc=\2a)(msDS-LastKnownRDN=\2a))' -includedeletedobjects -properties * -server $server}
+#ADIDNS wildcard and wpad nodes (dnsNode objects named * or wpad in the DNS zones, can be added by any authenticated user as long as the record does not exist yet, used by an attacker to redirect the unresolved hostnames or the web proxy discovery to a malicious host: poisoning, coercion and relay attacks)
+#The literal asterisk is escaped as \2a in the LDAP filter and msDS-LastKnownRDN is searched as well to catch created then tombstoned wildcard and wpad nodes
+#The legacy DNS zones located in the domain naming context are included in the search as well
+$ADIDNSwildcards = (@($DNSZones) + @($legacyDNSZones)) | where-object{-not $_.isDeleted} | foreach-object{get-adobject -searchbase $_.DistinguishedName -LDAPFilter '(|(cn=\2a)(dc=\2a)(msDS-LastKnownRDN=\2a)(cn=wpad)(dc=wpad)(msDS-LastKnownRDN=wpad))' -includedeletedobjects -properties * -server $server}
 if($ADIDNSwildcards)
 	{
 	$criticalobjects += $ADIDNSwildcards
@@ -1248,9 +1249,9 @@ if($ADIDNSwildcards)
 	}
 $countADIDNSwildcards = ($ADIDNSwildcards | measure-object).count
 if($error)
-    { "$(Get-TimeStamp) Error while retrieving ADIDNS wildcard nodes in the DNS zones $($error)" | out-file $logfilename -append ; $error.clear() }
+    { "$(Get-TimeStamp) Error while retrieving ADIDNS wildcard and wpad nodes in the DNS zones $($error)" | out-file $logfilename -append ; $error.clear() }
 else
-	{"$(Get-TimeStamp) Number of existing and deleted ADIDNS wildcard nodes in the DNS zones: $($countADIDNSwildcards)" | out-file $logfilename -append}
+	{"$(Get-TimeStamp) Number of existing and deleted ADIDNS wildcard and wpad nodes in the DNS zones: $($countADIDNSwildcards)" | out-file $logfilename -append}
 
 
 #Group Policy Objects, trusts, DPAPI secrets, AdminSDHolder, domainPolicy, RIDManager under the System container, GPO WMI Filters
