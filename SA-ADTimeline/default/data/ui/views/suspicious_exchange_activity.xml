@@ -6,7 +6,12 @@
       <input type="dropdown" token="ad_index" searchWhenChanged="true">
         <label>Choose index to process:</label>
         <search>
-          <query>| tstats latest(_time) where index=*  by index</query>
+          <query>| rest /services/data/indexes datatype=event
+  | search NOT title="_*"
+  | stats count by title
+  | fields title
+  | rename title AS index
+          </query>
         </search>
         <selectFirstChoice>true</selectFirstChoice>
         <fieldForLabel>index</fieldForLabel>
