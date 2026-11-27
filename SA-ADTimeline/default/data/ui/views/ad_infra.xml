@@ -6,7 +6,12 @@
       <input type="dropdown" token="ad_index" searchWhenChanged="true">
         <label>Choose index to process:</label>
         <search>
-          <query>| tstats latest(_time) where index=*  by index</query>
+          <query>| rest /services/data/indexes datatype=event
+  | search NOT title="_*"
+  | stats count by title
+  | fields title
+  | rename title AS index
+          </query>
         </search>
         <selectFirstChoice>true</selectFirstChoice>
         <fieldForLabel>index</fieldForLabel>
@@ -254,6 +259,49 @@
       <html depends="$show_html_adcs1$">
          <p style="font-weight: bold !important;font-size:14px">ADCS Enrollment servers, pKIEnrollmentService ObjectClass: No results</p>
       </html>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>ADCS certificate templates inventory (ESC1, ESC2, ESC3, ESC9, ESC15 indicators):</title>
+      <table>
+        <search>
+          <query>index=$ad_index$ host=$domain_host$ sourcetype=adobjects ObjectClass=pKICertificateTemplate | eval EnrolleeSuppliesSubject=if(pKICertificateNameFlag%2==1,"YES","no") | eval NoSecurityExtension=if(floor(pKIEnrollmentFlag/pow(2,19))%2==1,"YES","no") | eval EKU_AnyPurpose=if(like(pKIExtendedKeyUsage,"%2.5.29.37.0%"),"YES","no") | eval EKU_CertificateRequestAgent=if(like(pKIExtendedKeyUsage,"%1.3.6.1.4.1.311.20.2.1%"),"YES","no") | eval EKU_ClientAuthentication=if(like(pKIExtendedKeyUsage,"%1.3.6.1.5.5.7.3.2%"),"YES","no") | table Name, pKITemplateSchemaVersion, EnrolleeSuppliesSubject, NoSecurityExtension, EKU_ClientAuthentication, EKU_AnyPurpose, EKU_CertificateRequestAgent, Owner | sort -EnrolleeSuppliesSubject, Name</query>
+          <earliest>0</earliest>
+          <latest></latest>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">cell</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>ADCS OID group links (ESC13):</title>
+      <table>
+        <search>
+          <query>index=$ad_index$ host=$domain_host$ sourcetype=adobjects msDSOIDToGroupLink=* | table DN, msDSOIDToGroupLink</query>
+          <earliest>0</earliest>
+          <latest></latest>
+        </search>
+        <option name="count">5</option>
+        <option name="drilldown">cell</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+    <panel>
+      <title>Objects with a certificate mapping configured (ESC14):</title>
+      <table>
+        <search>
+          <query>index=$ad_index$ host=$domain_host$ sourcetype=adobjects altSecurityIdentities=* | fillnull value=0 adminCount | table DN, ObjectClass, SamAccountName, adminCount, altSecurityIdentities</query>
+          <earliest>0</earliest>
+          <latest></latest>
+        </search>
+        <option name="count">5</option>
+        <option name="drilldown">cell</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
     </panel>
   </row>
   <row>

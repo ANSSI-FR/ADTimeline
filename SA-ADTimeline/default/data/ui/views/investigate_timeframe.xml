@@ -6,7 +6,12 @@
       <input type="dropdown" token="ad_index" searchWhenChanged="true">
         <label>Choose index to process:</label>
         <search>
-          <query>| tstats latest(_time) where index=*  by index</query>
+          <query>| rest /services/data/indexes datatype=event
+  | search NOT title="_*"
+  | stats count by title
+  | fields title
+  | rename title AS index
+          </query>
         </search>
         <selectFirstChoice>true</selectFirstChoice>
         <fieldForLabel>index</fieldForLabel>
@@ -471,6 +476,62 @@
           © 2020 The MITRE Corporation. This work is reproduced and distributed with the permission of The MITRE Corporation.
         </p>
         </html> 
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>ADIDNS: dnsNode records modifications:</title>
+      <table>
+        <search>
+          <query>index=$ad_index$ host=$domain_host$ sourcetype=adtimeline ObjectClass=dnsNode | makemv pszLastOriginatingDsaDN delim=",CN=" | eval OriginatingDC = mvindex(pszLastOriginatingDsaDN, 1, 1) | table _time, DN, pszAttributeName, dwVersion, OriginatingDC | sort -_time</query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">cell</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+    <panel>
+      <title>Shadow principals: modifications on msDS-ShadowPrincipal objects:</title>
+      <table>
+        <search>
+          <query>index=$ad_index$ host=$domain_host$ sourcetype=adtimeline ObjectClass=msDS-ShadowPrincipal | makemv pszLastOriginatingDsaDN delim=",CN=" | eval OriginatingDC = mvindex(pszLastOriginatingDsaDN, 1, 1) | table _time, DN, pszAttributeName, Member, dwVersion, ftimeCreated, ftimeDeleted, OriginatingDC | sort -_time</query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">cell</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Golden gMSA: KDS root keys modifications:</title>
+      <table>
+        <search>
+          <query>index=$ad_index$ host=$domain_host$ sourcetype=adtimeline ObjectClass=msKds-ProvRootKey | makemv pszLastOriginatingDsaDN delim=",CN=" | eval OriginatingDC = mvindex(pszLastOriginatingDsaDN, 1, 1) | table _time, DN, pszAttributeName, dwVersion, OriginatingDC | sort -_time</query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">cell</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+    <panel>
+      <title>Managed service accounts: msDS-GroupMSAMembership, ACL and rotation interval modifications:</title>
+      <table>
+        <search>
+          <query>index=$ad_index$ host=$domain_host$ sourcetype=adtimeline ((ObjectClass = "msDS-GroupManagedServiceAccount") OR (ObjectClass = "msDS-ManagedServiceAccount")) (pszAttributeName="msDS-GroupMSAMembership" OR pszAttributeName="nTSecurityDescriptor" OR pszAttributeName="msDS-ManagedPasswordInterval") | makemv pszLastOriginatingDsaDN delim=",CN=" | eval OriginatingDC = mvindex(pszLastOriginatingDsaDN, 1, 1) | table _time, DN, ObjectClass, pszAttributeName, dwVersion, OriginatingDC | sort -_time</query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">cell</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
     </panel>
   </row>
 </form>

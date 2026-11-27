@@ -14,7 +14,12 @@
       <input type="dropdown" token="ad_index" searchWhenChanged="true">
         <label>Choose index to process:</label>
         <search>
-          <query>| tstats latest(_time) where index=*  by index</query>
+          <query>| rest /services/data/indexes datatype=event
+  | search NOT title="_*"
+  | stats count by title
+  | fields title
+  | rename title AS index
+          </query>
         </search>
         <selectFirstChoice>true</selectFirstChoice>
         <fieldForLabel>index</fieldForLabel>
@@ -738,6 +743,146 @@
           © 2020 The MITRE Corporation. This work is reproduced and distributed with the permission of The MITRE Corporation.
         </p>
         </html>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Shadow credentials: key credentials configured (msDS-KeyCredentialLink)</title>
+      <table>
+        <search>
+          <query>index=$ad_index$ host=$domain_host$ sourcetype=adobjects ((ObjectClass = "user") OR (ObjectClass = "inetOrgPerson") OR (ObjectClass = "Computer")) KeyCredentialLink=* | eval KeyCount=mvcount(split(KeyCredentialLink,"&lt;S&gt;B:"))-1 | eval KeyCount=if(KeyCount&lt;1,1,KeyCount) | table DN, ObjectClass, SamAccountName, adminCount, KeyCount | sort -adminCount, -KeyCount</query>
+          <earliest>0</earliest>
+          <latest></latest>
+        </search>
+        <option name="count">5</option>
+        <option name="drilldown">cell</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+    <panel>
+      <title>Shadow credentials: msDS-KeyCredentialLink modifications</title>
+      <table>
+        <search>
+          <query>index=$ad_index$ host=$domain_host$ sourcetype=adtimeline pszAttributeName="msDS-KeyCredentialLink" | makemv pszLastOriginatingDsaDN delim=",CN=" | eval OriginatingDC = mvindex(pszLastOriginatingDsaDN, 1, 1) | table _time, DN, ObjectClass, dwVersion, OriginatingDC | sort -_time</query>
+          <earliest>0</earliest>
+          <latest></latest>
+        </search>
+        <option name="count">5</option>
+        <option name="drilldown">cell</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Shadow principals: msDS-ShadowPrincipal objects inventory</title>
+      <table>
+        <search>
+          <query>index=$ad_index$ host=$domain_host$ sourcetype=adobjects ObjectClass=msDS-ShadowPrincipal | table DN, ShadowPrincipalSid, Members, whenCreated</query>
+          <earliest>0</earliest>
+          <latest></latest>
+        </search>
+        <option name="count">5</option>
+        <option name="drilldown">cell</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Managed service accounts (gMSA and sMSA): inventory, password readers (msDS-GroupMSAMembership) and rotation interval</title>
+      <table>
+        <search>
+          <query>index=$ad_index$ host=$domain_host$ sourcetype=adobjects ((ObjectClass = "msDS-GroupManagedServiceAccount") OR (ObjectClass = "msDS-ManagedServiceAccount")) | eval Status=if((userAccountControl%4)&gt;=2,"disabled","enabled") | rex "(?ms)msDS-GroupMSAMembership.{1,2000}AccessToString\&quot;&gt;(?&lt;ManagedPasswordReaders&gt;.+?)&lt;/S&gt;" | fillnull value="none" ManagedPasswordReaders | fillnull value=0 msDSManagedPasswordInterval | eval Rotation=case(msDSManagedPasswordInterval=0,"n/a",msDSManagedPasswordInterval&lt;=30,"default",msDSManagedPasswordInterval&lt;=90,"extended",msDSManagedPasswordInterval&lt;=365,"suspicious",true(),"frozen?") | table DN, Status, ManagedPasswordReaders, msDSManagedPasswordInterval, Rotation, SPNs, adminCount | sort -adminCount, DN</query>
+          <earliest>0</earliest>
+          <latest></latest>
+        </search>
+        <option name="count">5</option>
+        <option name="drilldown">cell</option>
+        <option name="refresh.display">progressbar</option>
+        <format type="color" field="msDSManagedPasswordInterval">
+          <colorPalette type="expression">case(value == 0, "#8C8C8C", value &lt;= 30, "#65A637", value &lt;= 90, "#6DB7AF", value &lt;= 365, "#F79049", true(), "#D13D3D")</colorPalette>
+        </format>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Golden gMSA: KDS root keys inventory (effective time delta since creation)</title>
+      <table>
+        <search>
+          <query>index=$ad_index$ host=$domain_host$ sourcetype=adobjects ObjectClass=msKds-ProvRootKey | eval EffectiveDeltaHours=tonumber(KDSEffectiveDeltaHours) | table DN, KDSWhenCreatedUTC, KDSCreateTimeUTC, EffectiveDeltaHours, msKdsVersion | sort EffectiveDeltaHours</query>
+          <earliest>0</earliest>
+          <latest></latest>
+        </search>
+        <option name="count">5</option>
+        <option name="drilldown">cell</option>
+        <option name="refresh.display">progressbar</option>
+        <format type="color" field="EffectiveDeltaHours">
+          <colorPalette type="expression">case(value &lt;= 0, "#D13D3D", value &lt;= 10, "#F79049", true(), "#65A637")</colorPalette>
+        </format>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>LAPS rotation: days left before the password rotation</title>
+      <table>
+        <search>
+          <query>index=$ad_index$ host=$domain_host$ sourcetype=adobjects (msMcsAdmPwdExpirationTime=* OR msLAPSPasswordExpirationTime=*) | eval expiration_filetime=coalesce(msMcsAdmPwdExpirationTime,msLAPSPasswordExpirationTime) | eval days_left=round((expiration_filetime/10000000 - 11644473600 - now())/86400,0) | eval LAPSType=if(isnotnull(msLAPSPasswordExpirationTime),"Windows LAPS","legacy LAPS") | table DN, dNSHostName, operatingSystem, LAPSType, days_left | sort -days_left</query>
+          <earliest>0</earliest>
+          <latest></latest>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">cell</option>
+        <option name="refresh.display">progressbar</option>
+        <format type="color" field="days_left">
+          <colorPalette type="expression">case(value &lt; 0, "#8C8C8C", value &lt;= 30, "#65A637", value &lt;= 90, "#6DB7AF", value &lt;= 365, "#F79049", true(), "#D13D3D")</colorPalette>
+        </format>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>ADIDNS: wildcard and wpad dnsNode records in the DNS zones</title>
+      <table>
+        <search>
+          <query>index=$ad_index$ host=$domain_host$ sourcetype=adobjects ObjectClass=dnsNode | fillnull value="N/A" ADIDNSTarget | table DN, ADIDNSTarget, whenCreated</query>
+          <earliest>0</earliest>
+          <latest></latest>
+        </search>
+        <option name="count">5</option>
+        <option name="drilldown">cell</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>ADCS: certificate templates and NTAuthCertificates modifications (ESC4)</title>
+      <table>
+        <search>
+          <query>index=$ad_index$ host=$domain_host$ sourcetype=adtimeline ((ObjectClass = "pKICertificateTemplate") OR (DN = "*CN=NTAuthCertificates,CN=Public Key Services*")) (pszAttributeName="msPKI-Certificate-Name-Flag" OR pszAttributeName="msPKI-Enrollment-Flag" OR pszAttributeName="pKIExtendedKeyUsage" OR pszAttributeName="nTSecurityDescriptor" OR pszAttributeName="member") dwVersion &gt;= 2 | makemv pszLastOriginatingDsaDN delim=",CN=" | eval OriginatingDC = mvindex(pszLastOriginatingDsaDN, 1, 1) | table _time, DN, ObjectClass, pszAttributeName, dwVersion, OriginatingDC | sort -_time</query>
+          <earliest>0</earliest>
+          <latest></latest>
+        </search>
+        <option name="count">5</option>
+        <option name="drilldown">cell</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+    <panel>
+      <title>ADCS: altSecurityIdentities modifications (ESC14)</title>
+      <table>
+        <search>
+          <query>index=$ad_index$ host=$domain_host$ sourcetype=adtimeline pszAttributeName="altSecurityIdentities" | makemv pszLastOriginatingDsaDN delim=",CN=" | eval OriginatingDC = mvindex(pszLastOriginatingDsaDN, 1, 1) | table _time, DN, ObjectClass, dwVersion, OriginatingDC | sort -_time</query>
+          <earliest>0</earliest>
+          <latest></latest>
+        </search>
+        <option name="count">5</option>
+        <option name="drilldown">cell</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
     </panel>
   </row>
 </form>
